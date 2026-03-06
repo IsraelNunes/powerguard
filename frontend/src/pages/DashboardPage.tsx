@@ -1,18 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { AssetRankingCard } from '../components/AssetRankingCard';
 import { AlertsTable } from '../components/AlertsTable';
 import { CriticalScenarioCard } from '../components/CriticalScenarioCard';
 import { KPIGrid } from '../components/KPIGrid';
-import { QuickActionsCard } from '../components/QuickActionsCard';
 import { TimeseriesChart } from '../components/TimeseriesChart';
 import { UploadCard } from '../components/UploadCard';
 import { WhatIfPanel } from '../components/WhatIfPanel';
-import { fetchAnalyticsRanking, runAnalytics } from '../features/analytics/api';
+import { runAnalytics } from '../features/analytics/api';
 import { fetchHealth } from '../features/health/api';
 import { uploadCsv } from '../features/ingestion/api';
-import { simulateDataset } from '../features/ingestion/simulate';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { AlertSeverity } from '../types/api';
 
@@ -79,11 +76,6 @@ export function DashboardPage() {
     queryFn: fetchHealth,
     refetchInterval: 30000
   });
-  const rankingQuery = useQuery({
-    queryKey: ['analytics-ranking'],
-    queryFn: () => fetchAnalyticsRanking(5),
-    refetchInterval: 30000
-  });
 
   const dashboardData = useDashboardData({
     equipmentId,
@@ -103,44 +95,7 @@ export function DashboardPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['measurements'] }),
         queryClient.invalidateQueries({ queryKey: ['analytics-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['analytics-ranking'] })
-      ]);
-    }
-  });
-
-  const rerunAnalyticsMutation = useMutation({
-    mutationFn: async () => {
-      if (!equipmentId) return null;
-      return runAnalytics(equipmentId);
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['measurements'] }),
-        queryClient.invalidateQueries({ queryKey: ['analytics-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['analytics-ranking'] })
-      ]);
-    }
-  });
-
-  const demoMutation = useMutation({
-    mutationFn: async () => {
-      const generated = await simulateDataset({
-        days: 14,
-        intervalMinutes: 5,
-        equipmentName: `Demo Hackathon ${new Date().toISOString().slice(0, 16)}`
-      });
-      await runAnalytics(generated.equipmentId);
-      return generated;
-    },
-    onSuccess: async (generated) => {
-      setEquipmentId(generated.equipmentId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['measurements'] }),
-        queryClient.invalidateQueries({ queryKey: ['analytics-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['analytics-ranking'] })
+        queryClient.invalidateQueries({ queryKey: ['alerts'] })
       ]);
     }
   });
@@ -153,13 +108,9 @@ export function DashboardPage() {
 
   const currentRisk = dashboardData.summaryQuery.data?.summary.risk.current;
   const criticalCount = dashboardData.summaryQuery.data?.summary.criticalCount ?? 0;
-  const recommendation = dashboardData.summaryQuery.data?.summary.recommendation;
-  const potentialAvoidedCostUSD = dashboardData.summaryQuery.data?.summary.impact?.potentialAvoidedCostUSD;
   const hasCriticalScenario = (currentRisk ?? 0) >= 75 || criticalCount > 0;
   const timeSinceLastCriticalHours =
     dashboardData.summaryQuery.data?.reliability.timeSinceLastCriticalHours ?? null;
-  const isQuickActionBusy =
-    uploadMutation.isPending || rerunAnalyticsMutation.isPending || demoMutation.isPending;
 
   return (
     <main className="layout">
@@ -180,8 +131,6 @@ export function DashboardPage() {
           currentRisk={currentRisk}
           criticalCount={criticalCount}
           timeSinceLastCriticalHours={timeSinceLastCriticalHours}
-          recommendation={recommendation}
-          potentialAvoidedCostUSD={potentialAvoidedCostUSD}
           onOpenCriticalAlerts={() => {
             setSeverity('CRITICAL');
             alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -274,19 +223,6 @@ export function DashboardPage() {
           measurements={dashboardData.measurementsView}
           trend={dashboardData.trend}
           loading={dashboardData.summaryQuery.isLoading || dashboardData.measurementsQuery.isLoading}
-        />
-
-        <AssetRankingCard ranking={rankingQuery.data} loading={rankingQuery.isLoading} />
-
-        <QuickActionsCard
-          disabled={!equipmentId}
-          isBusy={isQuickActionBusy}
-          onRunDemo={async () => {
-            await demoMutation.mutateAsync();
-          }}
-          onRerunAnalytics={async () => {
-            await rerunAnalyticsMutation.mutateAsync();
-          }}
         />
 
         {uploadError ? <p className="error card wide">Erro no upload: {uploadError}</p> : null}
