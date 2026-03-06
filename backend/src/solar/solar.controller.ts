@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateSolarPlantDto } from './dto/create-solar-plant.dto';
 import { IngestSolarGenerationDto } from './dto/ingest-solar-generation.dto';
 import { IngestSolarWeatherDto } from './dto/ingest-solar-weather.dto';
+import { IngestSolarWeatherInmetDto } from './dto/ingest-solar-weather-inmet.dto';
 import { GetSolarForecastDto } from './dto/get-solar-forecast.dto';
 import { ListSolarModelsDto } from './dto/list-solar-models.dto';
 import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
@@ -82,6 +83,12 @@ export class SolarController {
     }
 
     return this.solarService.ingestWeatherCsv(file.buffer, body);
+  }
+
+  @Post('ingestion/weather/inmet')
+  @HttpCode(HttpStatus.CREATED)
+  async ingestWeatherInmet(@Body() body: IngestSolarWeatherInmetDto) {
+    return this.solarService.ingestWeatherFromInmet(body);
   }
 
   @Post('forecast/train')

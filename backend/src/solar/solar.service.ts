@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -13,6 +15,7 @@ import { parseWeatherCsv } from './csv-weather.util';
 import { CreateSolarPlantDto } from './dto/create-solar-plant.dto';
 import { IngestSolarGenerationDto } from './dto/ingest-solar-generation.dto';
 import { IngestSolarWeatherDto } from './dto/ingest-solar-weather.dto';
+import { IngestSolarWeatherInmetDto } from './dto/ingest-solar-weather-inmet.dto';
 import { GetSolarForecastDto } from './dto/get-solar-forecast.dto';
 import { ListSolarModelsDto } from './dto/list-solar-models.dto';
 import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
@@ -36,6 +39,37 @@ export interface SolarPlantRow {
 
 interface SolarWeatherRow {
   timestampUtc: Date;
+}
+
+interface WeatherInputRow {
+  timestamp: Date;
+  ghiWm2: number | null;
+  dniWm2: number | null;
+  dhiWm2: number | null;
+  tempC: number | null;
+  cloudCoverPct: number | null;
+  windSpeedMs: number | null;
+}
+
+interface InmetStationRow {
+  CD_ESTACAO?: string;
+  VL_LATITUDE?: string;
+  VL_LONGITUDE?: string;
+  SG_ESTADO?: string;
+  TP_ESTACAO?: string;
+  DC_NOME?: string;
+}
+
+interface InmetMeasurementRow {
+  DT_MEDICAO?: string;
+  HR_MEDICAO?: string;
+  TEM_INS?: string;
+  TEMP_INS?: string;
+  RAD_GLO?: string;
+  VEN_VEL?: string;
+  VEN_DIR?: string;
+  UMD_INS?: string;
+  CHUVA?: string;
 }
 
 interface SolarTrainingJobRow {
@@ -118,6 +152,172 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
 
   private buildId(prefix: string) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private parseNumber(raw: unknown): number | null {
+    if (raw == null) return null;
+    const text = String(raw).trim();
+    if (!text) return null;
+    const normalized = text.replace(',', '.');
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  }
+
+  private async upsertWeatherRows(params: {
+    plantId: string;
+    source: string;
+    rows: WeatherInputRow[];
+  }) {
+    const { plantId, source } = params;
+    const uniqueByHour = new Map<
+      string,
+      {
+        timestampUtc: Date;
+        ghiWm2: number | null;
+        dniWm2: number | null;
+        dhiWm2: number | null;
+        tempC: number | null;
+        cloudCoverPct: number | null;
+        windSpeedMs: number | null;
+        qualityFlag: string;
+      }
+    >();
+    let rowsRejected = 0;
+
+    for (const row of params.rows) {
+      const timestampUtc = this.normalizeHourUtc(row.timestamp);
+      const normalizeNonNegative = (value: number | null) =>
+        value == null ? null : Math.max(0, Number(value.toFixed(3)));
+
+      const ghiWm2 = normalizeNonNegative(row.ghiWm2);
+      const dniWm2 = normalizeNonNegative(row.dniWm2);
+      const dhiWm2 = normalizeNonNegative(row.dhiWm2);
+      const tempC = row.tempC == null ? null : Number(row.tempC.toFixed(3));
+      const cloudCoverPct =
+        row.cloudCoverPct == null ? null : Math.max(0, Math.min(100, Number(row.cloudCoverPct.toFixed(3))));
+      const windSpeedMs = normalizeNonNegative(row.windSpeedMs);
+
+      if (
+        ghiWm2 == null &&
+        dniWm2 == null &&
+        dhiWm2 == null &&
+        tempC == null &&
+        cloudCoverPct == null &&
+        windSpeedMs == null
+      ) {
+        rowsRejected += 1;
+        continue;
+      }
+
+      uniqueByHour.set(timestampUtc.toISOString(), {
+        timestampUtc,
+        ghiWm2,
+        dniWm2,
+        dhiWm2,
+        tempC,
+        cloudCoverPct,
+        windSpeedMs,
+        qualityFlag: 'OK'
+      });
+    }
+
+    const normalizedRows = [...uniqueByHour.values()].sort(
+      (a, b) => a.timestampUtc.getTime() - b.timestampUtc.getTime()
+    );
+
+    if (normalizedRows.length === 0) {
+      throw new BadRequestException('no rows remaining after normalization');
+    }
+
+    const minTs = normalizedRows[0].timestampUtc;
+    const maxTs = normalizedRows[normalizedRows.length - 1].timestampUtc;
+
+    const existingRows = await this.prisma.$queryRaw<SolarWeatherRow[]>`
+      SELECT timestamp_utc AS "timestampUtc"
+      FROM solar_weather_hourly
+      WHERE plant_id = ${plantId}
+        AND timestamp_utc >= ${minTs}
+        AND timestamp_utc <= ${maxTs}
+    `;
+    const existingSet = new Set(existingRows.map((row) => new Date(row.timestampUtc).toISOString()));
+
+    let rowsInserted = 0;
+    let rowsUpdated = 0;
+
+    for (const row of normalizedRows) {
+      const tsIso = row.timestampUtc.toISOString();
+      if (existingSet.has(tsIso)) {
+        await this.prisma.$executeRaw`
+          UPDATE solar_weather_hourly
+          SET
+            ghi_wm2 = ${row.ghiWm2},
+            dni_wm2 = ${row.dniWm2},
+            dhi_wm2 = ${row.dhiWm2},
+            temp_c = ${row.tempC},
+            cloud_cover_pct = ${row.cloudCoverPct},
+            wind_speed_ms = ${row.windSpeedMs},
+            source = ${source},
+            quality_flag = ${row.qualityFlag},
+            updated_at = NOW()
+          WHERE plant_id = ${plantId}
+            AND timestamp_utc = ${row.timestampUtc}
+        `;
+        rowsUpdated += 1;
+      } else {
+        await this.prisma.$executeRaw`
+          INSERT INTO solar_weather_hourly (
+            id,
+            plant_id,
+            timestamp_utc,
+            ghi_wm2,
+            dni_wm2,
+            dhi_wm2,
+            temp_c,
+            cloud_cover_pct,
+            wind_speed_ms,
+            source,
+            quality_flag,
+            updated_at
+          )
+          VALUES (
+            ${this.buildId('sw')},
+            ${plantId},
+            ${row.timestampUtc},
+            ${row.ghiWm2},
+            ${row.dniWm2},
+            ${row.dhiWm2},
+            ${row.tempC},
+            ${row.cloudCoverPct},
+            ${row.windSpeedMs},
+            ${source},
+            ${row.qualityFlag},
+            NOW()
+          )
+        `;
+        rowsInserted += 1;
+      }
+    }
+
+    return {
+      source,
+      rowsReceived: params.rows.length,
+      rowsInserted,
+      rowsUpdated,
+      rowsRejected,
+      from: normalizedRows[0].timestampUtc.toISOString(),
+      to: normalizedRows[normalizedRows.length - 1].timestampUtc.toISOString()
+    };
+  }
+
+  private haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   private parseJsonField<T>(value: unknown, fallback: T): T {
@@ -430,26 +630,7 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
   }
 
   async ingestWeatherCsv(fileBuffer: Buffer, payload: IngestSolarWeatherDto) {
-    const plantRows = await this.prisma.$queryRaw<SolarPlantRow[]>`
-      SELECT
-        id,
-        name,
-        ons_plant_code AS "onsPlantCode",
-        latitude,
-        longitude,
-        installed_capacity_mw AS "installedCapacityMw",
-        timezone,
-        is_active AS "isActive",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM solar_plant
-      WHERE id = ${payload.plantId}
-      LIMIT 1
-    `;
-    const plant = plantRows[0];
-    if (!plant) {
-      throw new NotFoundException(`plantId not found: ${payload.plantId}`);
-    }
+    await this.getPlantOrFail(payload.plantId);
 
     const source = payload.source ?? 'INMET';
     const content = fileBuffer.toString('utf-8');
@@ -466,144 +647,153 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('no valid rows found in csv');
     }
 
-    const uniqueByHour = new Map<
-      string,
-      {
-        timestampUtc: Date;
-        ghiWm2: number | null;
-        dniWm2: number | null;
-        dhiWm2: number | null;
-        tempC: number | null;
-        cloudCoverPct: number | null;
-        windSpeedMs: number | null;
-        qualityFlag: string;
-      }
-    >();
-    let rowsRejected = 0;
-
-    for (const row of parsed.rows) {
-      const timestampUtc = this.normalizeHourUtc(row.timestamp);
-      const normalizeNonNegative = (value: number | null) =>
-        value == null ? null : Math.max(0, Number(value.toFixed(3)));
-
-      const ghiWm2 = normalizeNonNegative(row.ghiWm2);
-      const dniWm2 = normalizeNonNegative(row.dniWm2);
-      const dhiWm2 = normalizeNonNegative(row.dhiWm2);
-      const tempC = row.tempC == null ? null : Number(row.tempC.toFixed(3));
-      const cloudCoverPct =
-        row.cloudCoverPct == null ? null : Math.max(0, Math.min(100, Number(row.cloudCoverPct.toFixed(3))));
-      const windSpeedMs = normalizeNonNegative(row.windSpeedMs);
-
-      if (
-        ghiWm2 == null &&
-        dniWm2 == null &&
-        dhiWm2 == null &&
-        tempC == null &&
-        cloudCoverPct == null &&
-        windSpeedMs == null
-      ) {
-        rowsRejected += 1;
-        continue;
-      }
-
-      uniqueByHour.set(timestampUtc.toISOString(), {
-        timestampUtc,
-        ghiWm2,
-        dniWm2,
-        dhiWm2,
-        tempC,
-        cloudCoverPct,
-        windSpeedMs,
-        qualityFlag: 'OK'
-      });
-    }
-
-    const normalizedRows = [...uniqueByHour.values()].sort(
-      (a, b) => a.timestampUtc.getTime() - b.timestampUtc.getTime()
-    );
-
-    if (normalizedRows.length === 0) {
-      throw new BadRequestException('no rows remaining after normalization');
-    }
-
-    const minTs = normalizedRows[0].timestampUtc;
-    const maxTs = normalizedRows[normalizedRows.length - 1].timestampUtc;
-
-    const existingRows = await this.prisma.$queryRaw<SolarWeatherRow[]>`
-      SELECT timestamp_utc AS "timestampUtc"
-      FROM solar_weather_hourly
-      WHERE plant_id = ${payload.plantId}
-        AND timestamp_utc >= ${minTs}
-        AND timestamp_utc <= ${maxTs}
-    `;
-    const existingSet = new Set(existingRows.map((row) => new Date(row.timestampUtc).toISOString()));
-
-    let rowsInserted = 0;
-    let rowsUpdated = 0;
-
-    for (const row of normalizedRows) {
-      const tsIso = row.timestampUtc.toISOString();
-      if (existingSet.has(tsIso)) {
-        await this.prisma.$executeRaw`
-          UPDATE solar_weather_hourly
-          SET
-            ghi_wm2 = ${row.ghiWm2},
-            dni_wm2 = ${row.dniWm2},
-            dhi_wm2 = ${row.dhiWm2},
-            temp_c = ${row.tempC},
-            cloud_cover_pct = ${row.cloudCoverPct},
-            wind_speed_ms = ${row.windSpeedMs},
-            source = ${source},
-            quality_flag = ${row.qualityFlag},
-            updated_at = NOW()
-          WHERE plant_id = ${payload.plantId}
-            AND timestamp_utc = ${row.timestampUtc}
-        `;
-        rowsUpdated += 1;
-      } else {
-        await this.prisma.$executeRaw`
-          INSERT INTO solar_weather_hourly (
-            id,
-            plant_id,
-            timestamp_utc,
-            ghi_wm2,
-            dni_wm2,
-            dhi_wm2,
-            temp_c,
-            cloud_cover_pct,
-            wind_speed_ms,
-            source,
-            quality_flag,
-            updated_at
-          )
-          VALUES (
-            ${this.buildId('sw')},
-            ${payload.plantId},
-            ${row.timestampUtc},
-            ${row.ghiWm2},
-            ${row.dniWm2},
-            ${row.dhiWm2},
-            ${row.tempC},
-            ${row.cloudCoverPct},
-            ${row.windSpeedMs},
-            ${source},
-            ${row.qualityFlag},
-            NOW()
-          )
-        `;
-        rowsInserted += 1;
-      }
-    }
+    const upserted = await this.upsertWeatherRows({
+      plantId: payload.plantId,
+      source,
+      rows: parsed.rows.map((row) => ({
+        timestamp: row.timestamp,
+        ghiWm2: row.ghiWm2,
+        dniWm2: row.dniWm2,
+        dhiWm2: row.dhiWm2,
+        tempC: row.tempC,
+        cloudCoverPct: row.cloudCoverPct,
+        windSpeedMs: row.windSpeedMs
+      }))
+    });
 
     return {
       plantId: payload.plantId,
-      source,
-      rowsReceived: parsed.rows.length,
-      rowsInserted,
-      rowsUpdated,
-      rowsRejected,
-      from: normalizedRows[0].timestampUtc.toISOString(),
-      to: normalizedRows[normalizedRows.length - 1].timestampUtc.toISOString()
+      ...upserted
+    };
+  }
+
+  async ingestWeatherFromInmet(payload: IngestSolarWeatherInmetDto) {
+    const plant = await this.getPlantOrFail(payload.plantId);
+    const baseUrl = process.env.INMET_BASE_URL ?? 'https://apitempo.inmet.gov.br';
+    const headers = {
+      Accept: 'application/json',
+      'User-Agent': 'powerguard-ai/1.0'
+    };
+
+    let stationCode = payload.stationCode;
+    let candidateStations: string[] = [];
+    if (!stationCode) {
+      if (plant.latitude == null || plant.longitude == null) {
+        throw new BadRequestException('plant must have latitude/longitude or stationCode must be provided');
+      }
+
+      const stationsRes = await fetch(`${baseUrl}/estacoes/T`, { headers });
+      if (!stationsRes.ok) {
+        throw new BadRequestException(`INMET station list failed: ${stationsRes.status}`);
+      }
+      const stations = (await stationsRes.json()) as InmetStationRow[];
+      if (!Array.isArray(stations) || stations.length === 0) {
+        throw new BadRequestException('INMET station list is empty');
+      }
+
+      const automatic = stations.filter((s) => (s.TP_ESTACAO ?? '').toUpperCase().startsWith('A'));
+      const candidates = automatic.length > 0 ? automatic : stations;
+      const ranked: Array<{ code: string; distanceKm: number }> = [];
+      for (const station of candidates) {
+        const code = station.CD_ESTACAO;
+        const lat = this.parseNumber(station.VL_LATITUDE);
+        const lon = this.parseNumber(station.VL_LONGITUDE);
+        if (!code || lat == null || lon == null) continue;
+        const distanceKm = this.haversineDistanceKm(plant.latitude, plant.longitude, lat, lon);
+        ranked.push({ code, distanceKm });
+      }
+      ranked.sort((a, b) => a.distanceKm - b.distanceKm);
+      candidateStations = ranked.slice(0, 6).map((item) => item.code);
+      if (candidateStations.length === 0) {
+        throw new BadRequestException('unable to resolve nearest INMET station');
+      }
+      stationCode = candidateStations[0];
+    } else {
+      candidateStations = [stationCode];
+    }
+
+    const start = payload.startDate.slice(0, 10);
+    const end = payload.endDate.slice(0, 10);
+
+    let measurements: InmetMeasurementRow[] = [];
+    let selectedStation = stationCode;
+    let lastStatus = 0;
+
+    for (const code of candidateStations) {
+      selectedStation = code;
+      let dataRes = await fetch(`${baseUrl}/estacao/${start}/${end}/${code}`, { headers });
+      if (!dataRes.ok && process.env.INMET_TOKEN) {
+        dataRes = await fetch(`${baseUrl}/token/estacao/${start}/${end}/${code}/${process.env.INMET_TOKEN}`, {
+          headers
+        });
+      }
+
+      lastStatus = dataRes.status;
+      if (dataRes.status === 204) continue;
+
+      const raw = await dataRes.text();
+      if (!raw || raw.trim().length === 0) continue;
+      if (raw.toLowerCase().includes('limite de requisi')) {
+        throw new HttpException(
+          'INMET rate limit reached. Tente novamente em alguns minutos.',
+          HttpStatus.TOO_MANY_REQUESTS
+        );
+      }
+
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        measurements = parsed as InmetMeasurementRow[];
+        break;
+      }
+    }
+
+    if (measurements.length === 0) {
+      throw new BadRequestException(
+        `INMET returned no valid measurements for requested range (${start} to ${end}). Last status: ${lastStatus}`
+      );
+    }
+
+    const rows: WeatherInputRow[] = [];
+    for (const row of measurements) {
+      const datePart = row.DT_MEDICAO?.trim();
+      const hourPart = row.HR_MEDICAO?.trim();
+      if (!datePart || !hourPart) continue;
+
+      const normalizedHour = hourPart.padStart(4, '0').slice(0, 2);
+      const timestamp = new Date(`${datePart}T${normalizedHour}:00:00Z`);
+      if (Number.isNaN(timestamp.getTime())) continue;
+
+      rows.push({
+        timestamp,
+        ghiWm2: this.parseNumber(row.RAD_GLO),
+        dniWm2: null,
+        dhiWm2: null,
+        tempC: this.parseNumber(row.TEM_INS ?? row.TEMP_INS),
+        cloudCoverPct: null,
+        windSpeedMs: this.parseNumber(row.VEN_VEL)
+      });
+    }
+
+    if (rows.length === 0) {
+      throw new BadRequestException('INMET payload parsed with zero valid rows');
+    }
+
+    const upserted = await this.upsertWeatherRows({
+      plantId: payload.plantId,
+      source: 'INMET_API',
+      rows
+    });
+
+    return {
+      plantId: payload.plantId,
+      stationCode: selectedStation,
+      requestedWindow: { startDate: start, endDate: end },
+      ...upserted
     };
   }
 
