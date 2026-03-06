@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { axiosClient } from '../../lib/axiosClient';
-import { AnalyticsRunResponse, AnalyticsSummaryResponse } from '../../types/api';
+import { AnalyticsRankingResponse, AnalyticsRunResponse, AnalyticsSummaryResponse } from '../../types/api';
 
 export async function runAnalytics(equipmentId: string): Promise<AnalyticsRunResponse> {
   const { data } = await axiosClient.post<AnalyticsRunResponse>('/analytics/run', null, {
@@ -23,4 +23,11 @@ export async function fetchAnalyticsSummary(
     }
     throw error;
   }
+}
+
+export async function fetchAnalyticsRanking(limit = 5): Promise<AnalyticsRankingResponse> {
+  const { data } = await axiosClient.get<AnalyticsRankingResponse>('/analytics/ranking', {
+    params: { limit }
+  });
+  return data;
 }

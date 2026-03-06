@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventSource, Prisma } from '@prisma/client';
 import { evaluatePoint, calculateFeatureStats } from './analytics.engine';
+import { AnalyticsRankingDto } from './dto/analytics-ranking.dto';
 import { AnalyticsSummaryDto } from './dto/analytics-summary.dto';
 import { RunAnalyticsDto } from './dto/run-analytics.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,6 +19,13 @@ export class AnalyticsService {
       CRITICAL: 'Critico'
     };
     return `Risco ${labels[level]}`;
+  }
+
+  private recommendationFromScore(score: number): string {
+    if (score >= 75) return 'Acionar manutencao imediata e reduzir carga critica do ativo.';
+    if (score >= 50) return 'Executar inspecao prioritaria e monitoramento em janela curta.';
+    if (score >= 25) return 'Ajustar parametros operacionais e acompanhar tendencia.';
+    return 'Manter operacao normal com monitoramento preventivo.';
   }
 
   private chunk<T>(items: T[], size = AnalyticsService.CHUNK_SIZE): T[][] {
@@ -91,6 +99,9 @@ export class AnalyticsService {
       totalMeasurements: measurements.length,
       anomalyCount,
       anomalyRate: Number((anomalyCount / measurements.length).toFixed(4)),
+      confidence: Number(
+        (Math.min(0.99, 0.55 + (anomalyCount / measurements.length) * 0.25 + (criticalCount / measurements.length) * 0.2) * 100).toFixed(2)
+      ),
       risk: {
         current: evaluations[evaluations.length - 1].evaluated.riskScore,
         average: Number((riskScores.reduce((acc, score) => acc + score, 0) / riskScores.length).toFixed(2)),
@@ -98,6 +109,11 @@ export class AnalyticsService {
         min: Math.min(...riskScores)
       },
       criticalCount,
+      recommendation: this.recommendationFromScore(evaluations[evaluations.length - 1].evaluated.riskScore),
+      impact: {
+        estimatedDowntimeRiskHours: Number((criticalCount * 0.8 + anomalyCount * 0.12).toFixed(2)),
+        potentialAvoidedCostUSD: Math.round(criticalCount * 1200 + anomalyCount * 120)
+      },
       computedAt: new Date().toISOString()
     };
 
@@ -135,7 +151,11 @@ export class AnalyticsService {
           measurementId: entry.measurement.id,
           riskScore: entry.evaluated.riskScore,
           anomalyScore: entry.evaluated.anomalyScore,
-          featureImpact: entry.evaluated.featureImpact
+          featureImpact: entry.evaluated.featureImpact,
+          confidence: Number(
+            (Math.min(0.99, 0.55 + entry.evaluated.anomalyScore * 0.3 + entry.evaluated.deviationComponent * 0.15) * 100).toFixed(2)
+          ),
+          recommendation: this.recommendationFromScore(entry.evaluated.riskScore)
         } as Prisma.InputJsonValue
       }));
 
@@ -218,6 +238,55 @@ export class AnalyticsService {
           ? Number(((Date.now() - latestCriticalEvent.timestamp.getTime()) / (1000 * 60 * 60)).toFixed(2))
           : null
       }
+    };
+  }
+
+  async ranking(query: AnalyticsRankingDto) {
+    const limit = query.limit ?? 5;
+
+    const recentRuns = await this.prisma.analysisRun.findMany({
+      orderBy: { executedAt: 'desc' },
+      take: 200
+    });
+
+    const latestByEquipment = new Map<string, (typeof recentRuns)[number]>();
+    for (const run of recentRuns) {
+      if (!latestByEquipment.has(run.equipmentId)) {
+        latestByEquipment.set(run.equipmentId, run);
+      }
+    }
+
+    const selected = [...latestByEquipment.values()].slice(0, 100);
+    const equipments = await this.prisma.equipment.findMany({
+      where: { id: { in: selected.map((item) => item.equipmentId) } }
+    });
+    const eqName = new Map(equipments.map((eq) => [eq.id, eq.name]));
+
+    const ranking = selected
+      .map((run) => {
+        const summary = run.summaryJson as {
+          risk?: { current?: number };
+          anomalyCount?: number;
+          criticalCount?: number;
+          confidence?: number;
+        };
+        return {
+          equipmentId: run.equipmentId,
+          equipmentName: eqName.get(run.equipmentId) ?? run.equipmentId,
+          riskCurrent: summary.risk?.current ?? 0,
+          anomalyCount: summary.anomalyCount ?? 0,
+          criticalCount: summary.criticalCount ?? 0,
+          confidence: summary.confidence ?? 0,
+          executedAt: run.executedAt
+        };
+      })
+      .sort((a, b) => b.riskCurrent - a.riskCurrent)
+      .slice(0, limit);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      count: ranking.length,
+      items: ranking
     };
   }
 }
