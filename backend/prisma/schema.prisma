@@ -101,3 +101,125 @@ model AlertEvent {
   @@index([equipmentId, timestamp])
   @@index([severity])
 }
+
+model SolarPlant {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  onsPlantCode        String?  @map("ons_plant_code")
+  latitude            Float?
+  longitude           Float?
+  installedCapacityMw Float    @map("installed_capacity_mw")
+  timezone            String   @default("America/Sao_Paulo")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  generations         SolarGenerationHourly[]
+  weatherRecords      SolarWeatherHourly[]
+  trainingJobs        SolarTrainingJob[]
+  modelVersions       SolarModelVersion[]
+  forecasts           SolarForecast[]
+
+  @@index([isActive])
+  @@map("solar_plant")
+}
+
+model SolarGenerationHourly {
+  id             String    @id @default(cuid())
+  plantId        String    @map("plant_id")
+  plant          SolarPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  timestampUtc   DateTime  @map("timestamp_utc")
+  generationMw   Float     @map("generation_mw")
+  capacityFactor Float?    @map("capacity_factor")
+  source         String
+  qualityFlag    String    @default("OK") @map("quality_flag")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([plantId, timestampUtc])
+  @@index([plantId, timestampUtc])
+  @@map("solar_generation_hourly")
+}
+
+model SolarWeatherHourly {
+  id            String    @id @default(cuid())
+  plantId       String    @map("plant_id")
+  plant         SolarPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  timestampUtc  DateTime  @map("timestamp_utc")
+  ghiWm2        Float?    @map("ghi_wm2")
+  dniWm2        Float?    @map("dni_wm2")
+  dhiWm2        Float?    @map("dhi_wm2")
+  tempC         Float?    @map("temp_c")
+  cloudCoverPct Float?    @map("cloud_cover_pct")
+  windSpeedMs   Float?    @map("wind_speed_ms")
+  source        String
+  qualityFlag   String    @default("OK") @map("quality_flag")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([plantId, timestampUtc])
+  @@index([plantId, timestampUtc])
+  @@map("solar_weather_hourly")
+}
+
+model SolarTrainingJob {
+  id             String   @id @default(cuid())
+  plantId        String   @map("plant_id")
+  plant          SolarPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  status         String
+  paramsJson     Json     @map("params_json")
+  metricsJson    Json?    @map("metrics_json")
+  modelVersionId String?  @map("model_version_id")
+  requestedBy    String?  @map("requested_by")
+  errorMessage   String?  @map("error_message")
+  startedAt      DateTime? @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([plantId, status])
+  @@index([status, createdAt])
+  @@map("solar_training_job")
+}
+
+model SolarModelVersion {
+  id               String   @id @default(cuid())
+  plantId          String   @map("plant_id")
+  plant            SolarPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  version          String
+  algorithm        String
+  featuresJson     Json     @map("features_json")
+  hyperparamsJson  Json     @map("hyperparams_json")
+  metricsJson      Json     @map("metrics_json")
+  trainWindowStart DateTime @map("train_window_start")
+  trainWindowEnd   DateTime @map("train_window_end")
+  isActive         Boolean  @default(false) @map("is_active")
+  artifactJson     Json     @map("artifact_json")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  forecasts        SolarForecast[]
+
+  @@index([plantId, isActive])
+  @@index([plantId, createdAt])
+  @@map("solar_model_version")
+}
+
+model SolarForecast {
+  id               String   @id @default(cuid())
+  plantId          String   @map("plant_id")
+  plant            SolarPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  modelVersionId   String   @map("model_version_id")
+  modelVersion     SolarModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  forecastRunAt    DateTime @map("forecast_run_at")
+  targetTimestampUtc DateTime @map("target_timestamp_utc")
+  horizonHours     Int      @map("horizon_hours")
+  predGenerationMw Float    @map("pred_generation_mw")
+  predCapacityFactor Float  @map("pred_capacity_factor")
+  p10GenerationMw  Float?   @map("p10_generation_mw")
+  p50GenerationMw  Float?   @map("p50_generation_mw")
+  p90GenerationMw  Float?   @map("p90_generation_mw")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([plantId, targetTimestampUtc])
+  @@index([plantId, forecastRunAt])
+  @@map("solar_forecast")
+}

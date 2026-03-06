@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { MeasurementsModule } from './measurements/measurements.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SolarModule } from './solar/solar.module';
 import { SimulatorModule } from './simulator/simulator.module';
 
 @Module({
@@ -17,7 +18,8 @@ import { SimulatorModule } from './simulator/simulator.module';
     MeasurementsModule,
     AnalyticsModule,
     AlertsModule,
-    SimulatorModule
+    SimulatorModule,
+    SolarModule
   ]
 })
 export class AppModule {}
