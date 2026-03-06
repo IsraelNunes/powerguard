@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -18,23 +17,10 @@ interface Props {
   loading: boolean;
 }
 
-type MetricKey = 'voltage' | 'current' | 'power' | 'temperature';
-
-const METRICS: Array<{ key: MetricKey; label: string; color: string }> = [
-  { key: 'voltage', label: 'Tensão', color: '#1f77b4' },
-  { key: 'current', label: 'Corrente', color: '#2ca02c' },
-  { key: 'power', label: 'Potência', color: '#ff7f0e' },
-  { key: 'temperature', label: 'Temperatura', color: '#d62728' }
-];
+type MetricKey = 'voltage' | 'current' | 'temperature';
+type SeverityKey = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export function TimeseriesChart({ measurements, alerts, loading }: Props) {
-  const [activeMetrics, setActiveMetrics] = useState<Record<MetricKey, boolean>>({
-    voltage: true,
-    current: true,
-    power: true,
-    temperature: true
-  });
-
   if (loading) {
     return <article className="card wide">Carregando série temporal...</article>;
   }
@@ -57,82 +43,63 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
     .filter((point) => alertMap.has(point.timestamp))
     .map((point) => ({
       ...point,
-      severity: alertMap.get(point.timestamp) ?? 'LOW'
+      severity: (alertMap.get(point.timestamp) ?? 'LOW') as SeverityKey
     }));
 
-  const severityColor: Record<string, string> = {
+  const severityColor: Record<SeverityKey, string> = {
     LOW: '#0b7a4f',
     MEDIUM: '#9a6b00',
     HIGH: '#ad4c00',
     CRITICAL: '#a11717'
   };
 
+  const charts: Array<{
+    title: string;
+    metricKey: MetricKey;
+    color: string;
+    legend: string;
+  }> = [
+    { title: 'Tensão', metricKey: 'voltage', color: '#1f77b4', legend: 'Tensão (V)' },
+    { title: 'Corrente', metricKey: 'current', color: '#2ca02c', legend: 'Corrente (A)' },
+    { title: 'Temperatura', metricKey: 'temperature', color: '#d62728', legend: 'Temperatura (°C)' }
+  ];
+
   return (
-    <article className="card wide">
-      <div className="row-between">
-        <h2>Série Temporal</h2>
-        <div className="metric-toggle-group">
-          {METRICS.map((metric) => (
-            <button
-              key={metric.key}
-              type="button"
-              className={`metric-toggle ${activeMetrics[metric.key] ? 'active' : ''}`}
-              onClick={() =>
-                setActiveMetrics((prev) => ({
-                  ...prev,
-                  [metric.key]: !prev[metric.key]
-                }))
-              }
-            >
-              <span className="metric-dot" style={{ background: metric.color }} />
-              {metric.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="chart-wrap">
-        <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={points}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" minTickGap={24} />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            {activeMetrics.voltage ? (
-              <Line type="monotone" dataKey="voltage" stroke="#1f77b4" dot={false} />
-            ) : null}
-            {activeMetrics.current ? (
-              <Line type="monotone" dataKey="current" stroke="#2ca02c" dot={false} />
-            ) : null}
-            {activeMetrics.power ? (
-              <Line type="monotone" dataKey="power" stroke="#ff7f0e" dot={false} />
-            ) : null}
-            {activeMetrics.temperature ? (
-              <Line type="monotone" dataKey="temperature" stroke="#d62728" dot={false} />
-            ) : null}
-            {activeMetrics.temperature ? (
-              <Scatter
-                data={alertMarkers}
-                dataKey="temperature"
-                name="Alertas"
-                shape={(props: { cx?: number; cy?: number; payload?: { severity?: string } }) => {
-                  const { cx, cy, payload } = props;
-                  if (typeof cx !== 'number' || typeof cy !== 'number') return <circle r={0} />;
-                  const severity = payload?.severity ?? 'LOW';
-                  const color = severityColor[severity] ?? '#a11717';
-                  return <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />;
-                }}
-              />
-            ) : null}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      {!Object.values(activeMetrics).some(Boolean) ? (
-        <p className="muted">Selecione ao menos uma métrica para visualizar.</p>
-      ) : null}
+    <>
+      {charts.map((chart) => (
+        <article className="card" key={chart.metricKey}>
+          <h2>{chart.title}</h2>
+          <div className="chart-wrap">
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="label" minTickGap={24} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey={chart.metricKey} name={chart.legend} stroke={chart.color} dot={false} />
+                <Scatter
+                  data={alertMarkers}
+                  dataKey={chart.metricKey}
+                  name="Alertas"
+                  shape={(props: { cx?: number; cy?: number; payload?: { severity?: SeverityKey } }) => {
+                    const { cx, cy, payload } = props;
+                    if (typeof cx !== 'number' || typeof cy !== 'number') return <circle r={0} />;
+                    const severity = payload?.severity ?? 'LOW';
+                    const color = severityColor[severity] ?? '#a11717';
+                    return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={1.2} />;
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </article>
+      ))}
       {alertMarkers.length > 0 ? (
-        <p className="muted">Marcadores de alerta exibidos na série de temperatura (cores por severidade).</p>
+        <p className="card wide muted">
+          Marcadores de alerta exibidos nos gráficos (cores por severidade: baixo, médio, alto e crítico).
+        </p>
       ) : null}
-    </article>
+    </>
   );
 }

@@ -21,9 +21,10 @@ body {
 }
 
 .layout {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 20px;
 }
 
 .topbar h1 {
