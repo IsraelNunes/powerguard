@@ -3,7 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchAlerts } from '../features/alerts/api';
 import { fetchAnalyticsSummary } from '../features/analytics/api';
 import { fetchMeasurements } from '../features/measurements/api';
-import { AlertSeverity, MeasurementsResponse } from '../types/api';
+import {
+  AlertSeverity,
+  AlertsResponse,
+  AnalyticsSummaryResponse,
+  MeasurementsResponse
+} from '../types/api';
 
 interface Args {
   equipmentId: string | null;
@@ -12,7 +17,21 @@ interface Args {
   to?: string;
 }
 
-export function useDashboardData({ equipmentId, severity, from, to }: Args) {
+interface UseDashboardDataResult {
+  measurementsQuery: ReturnType<typeof useQuery<MeasurementsResponse>>;
+  measurementsView: MeasurementsResponse | undefined;
+  rangeAutoAdjusted: boolean;
+  summaryQuery: ReturnType<typeof useQuery<AnalyticsSummaryResponse | null>>;
+  alertsQuery: ReturnType<typeof useQuery<AlertsResponse>>;
+  trend: number;
+}
+
+export function useDashboardData({
+  equipmentId,
+  severity,
+  from,
+  to
+}: Args): UseDashboardDataResult {
   const allMeasurementsQuery = useQuery({
     queryKey: ['measurements', equipmentId],
     queryFn: () =>
