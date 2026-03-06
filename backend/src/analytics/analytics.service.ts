@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
+  private static readonly CHUNK_SIZE = 1000;
 
   private mapRiskTitle(level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL') {
     const labels = {
@@ -17,6 +18,14 @@ export class AnalyticsService {
       CRITICAL: 'Critico'
     };
     return `Risco ${labels[level]}`;
+  }
+
+  private chunk<T>(items: T[], size = AnalyticsService.CHUNK_SIZE): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+      chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
   }
 
   async run(query: RunAnalyticsDto) {
@@ -39,7 +48,7 @@ export class AnalyticsService {
     const measurements = await this.prisma.measurement.findMany({
       where,
       orderBy: { timestamp: 'asc' },
-      take: query.limit ?? 5000
+      take: query.limit ?? 20000
     });
 
     if (measurements.length < 30) {
@@ -101,62 +110,61 @@ export class AnalyticsService {
       }
     });
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.alertEvent.deleteMany({
-        where: {
-          equipmentId: query.equipmentId,
-          source: EventSource.ANALYTICS,
-          timestamp: {
-            gte: fromTs,
-            lte: toTs
-          }
-        }
-      });
+    const measurementIds = evaluations.map((entry) => entry.measurement.id);
+    const anomalyRows: Prisma.AnomalyResultCreateManyInput[] = evaluations.map((entry) => ({
+      analysisRunId: run.id,
+      measurementId: entry.measurement.id,
+      isAnomaly: entry.evaluated.isAnomaly,
+      anomalyScore: entry.evaluated.anomalyScore,
+      featureImpactJson: entry.evaluated.featureImpact as Prisma.InputJsonValue,
+      riskScore: entry.evaluated.riskScore,
+      riskLevel: entry.evaluated.riskLevel
+    }));
 
-      for (const entry of evaluations) {
-        await tx.anomalyResult.upsert({
-          where: { measurementId: entry.measurement.id },
-          create: {
-            analysisRunId: run.id,
-            measurementId: entry.measurement.id,
-            isAnomaly: entry.evaluated.isAnomaly,
-            anomalyScore: entry.evaluated.anomalyScore,
-            featureImpactJson: entry.evaluated.featureImpact as Prisma.InputJsonValue,
-            riskScore: entry.evaluated.riskScore,
-            riskLevel: entry.evaluated.riskLevel
-          },
-          update: {
-            analysisRunId: run.id,
-            isAnomaly: entry.evaluated.isAnomaly,
-            anomalyScore: entry.evaluated.anomalyScore,
-            featureImpactJson: entry.evaluated.featureImpact as Prisma.InputJsonValue,
-            riskScore: entry.evaluated.riskScore,
-            riskLevel: entry.evaluated.riskLevel,
-            createdAt: new Date()
-          }
-        });
+    const alertRows: Prisma.AlertEventCreateManyInput[] = evaluations
+      .filter((entry) => entry.evaluated.isAnomaly || entry.evaluated.riskLevel === 'CRITICAL')
+      .map((entry) => ({
+        equipmentId: query.equipmentId,
+        timestamp: entry.measurement.timestamp,
+        severity: entry.evaluated.severity,
+        title: this.mapRiskTitle(entry.evaluated.riskLevel),
+        explanation: entry.evaluated.explanation,
+        rootCauseHint: entry.evaluated.rootCauseHint,
+        source: EventSource.ANALYTICS,
+        payloadJson: {
+          measurementId: entry.measurement.id,
+          riskScore: entry.evaluated.riskScore,
+          anomalyScore: entry.evaluated.anomalyScore,
+          featureImpact: entry.evaluated.featureImpact
+        } as Prisma.InputJsonValue
+      }));
 
-        if (entry.evaluated.isAnomaly || entry.evaluated.riskLevel === 'CRITICAL') {
-          await tx.alertEvent.create({
-            data: {
-              equipmentId: query.equipmentId,
-              timestamp: entry.measurement.timestamp,
-              severity: entry.evaluated.severity,
-              title: this.mapRiskTitle(entry.evaluated.riskLevel),
-              explanation: entry.evaluated.explanation,
-              rootCauseHint: entry.evaluated.rootCauseHint,
-              source: EventSource.ANALYTICS,
-              payloadJson: {
-                measurementId: entry.measurement.id,
-                riskScore: entry.evaluated.riskScore,
-                anomalyScore: entry.evaluated.anomalyScore,
-                featureImpact: entry.evaluated.featureImpact
-              } as Prisma.InputJsonValue
-            }
-          });
+    await this.prisma.alertEvent.deleteMany({
+      where: {
+        equipmentId: query.equipmentId,
+        source: EventSource.ANALYTICS,
+        timestamp: {
+          gte: fromTs,
+          lte: toTs
         }
       }
     });
+
+    await this.prisma.anomalyResult.deleteMany({
+      where: {
+        measurementId: {
+          in: measurementIds
+        }
+      }
+    });
+
+    for (const batch of this.chunk(anomalyRows)) {
+      await this.prisma.anomalyResult.createMany({ data: batch });
+    }
+
+    for (const batch of this.chunk(alertRows)) {
+      await this.prisma.alertEvent.createMany({ data: batch });
+    }
 
     return {
       runId: run.id,
