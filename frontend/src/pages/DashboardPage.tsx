@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { AlertsTable } from '../components/AlertsTable';
 import { CriticalScenarioCard } from '../components/CriticalScenarioCard';
 import { KPIGrid } from '../components/KPIGrid';
+import { RiskTrendChart } from '../components/RiskTrendChart';
 import { TimeseriesChart } from '../components/TimeseriesChart';
 import { UploadCard } from '../components/UploadCard';
 import { WhatIfPanel } from '../components/WhatIfPanel';
@@ -235,6 +236,12 @@ export function DashboardPage({ onOpenSolarForecast }: Props) {
         />
 
         {uploadError ? <p className="error card wide">Erro no upload: {uploadError}</p> : null}
+
+        <RiskTrendChart
+          measurements={dashboardData.measurementsView}
+          alerts={dashboardData.alertsQuery.data?.items ?? []}
+          loading={dashboardData.measurementsQuery.isLoading}
+        />
 
         <TimeseriesChart
           measurements={dashboardData.measurementsView}

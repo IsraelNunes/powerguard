@@ -365,19 +365,21 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
           )}
         </article>
 
-        <HistoryVsForecastChart
-          generation={generationQuery.data}
-          forecast={forecastQuery.data}
-          installedCapacityMw={summaryQuery.data?.plant.installedCapacityMw}
-          loading={generationQuery.isLoading || forecastQuery.isLoading}
-        />
+        <section className="solar-charts-grid wide">
+          <HistoryVsForecastChart
+            generation={generationQuery.data}
+            forecast={forecastQuery.data}
+            installedCapacityMw={summaryQuery.data?.plant.installedCapacityMw}
+            loading={generationQuery.isLoading || forecastQuery.isLoading}
+          />
 
-        <SolarFinancialCharts
-          summary={summaryQuery.data}
-          generation={generationQuery.data}
-          forecast={forecastQuery.data}
-          loading={generationQuery.isLoading || forecastQuery.isLoading || summaryQuery.isLoading}
-        />
+          <SolarFinancialCharts
+            summary={summaryQuery.data}
+            generation={generationQuery.data}
+            forecast={forecastQuery.data}
+            loading={generationQuery.isLoading || forecastQuery.isLoading || summaryQuery.isLoading}
+          />
+        </section>
       </section>
     </main>
   );

@@ -262,6 +262,37 @@ button.secondary {
   margin-top: 10px;
 }
 
+.timeseries-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.timeseries-grid .card {
+  min-height: 380px;
+}
+
+.timeseries-note {
+  grid-column: 1 / -1;
+  min-height: auto !important;
+}
+
+.solar-charts-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.solar-charts-grid .card {
+  min-height: 380px;
+}
+
+.solar-charts-grid .card.wide {
+  grid-column: 1 / -1;
+}
+
 .metric-toggle-group {
   display: flex;
   flex-wrap: wrap;
@@ -361,6 +392,14 @@ button.secondary {
   }
 
   .period-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .timeseries-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .solar-charts-grid {
     grid-template-columns: 1fr;
   }
 
