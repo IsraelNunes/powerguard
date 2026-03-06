@@ -94,7 +94,7 @@ export function SolarFinancialCharts({ summary, generation, forecast, loading }:
 
   return (
     <>
-      <article className="card wide">
+      <article className="card">
         <h2>Financeiro: Receita Esperada vs Prevista</h2>
         <p className="muted">
           Tarifa usada: {formatCurrency(pricePerMwhBrl)}/MWh | Gap energético: {gapPercent}%
@@ -126,7 +126,7 @@ export function SolarFinancialCharts({ summary, generation, forecast, loading }:
         </div>
       </article>
 
-      <article className="card wide">
+      <article className="card">
         <h2>Financeiro: Perda por Hora e Acumulada</h2>
         <div className="chart-wrap">
           <ResponsiveContainer width="100%" height={320}>

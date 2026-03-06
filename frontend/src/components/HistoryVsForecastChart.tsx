@@ -77,7 +77,7 @@ export function HistoryVsForecastChart({
 
   return (
     <>
-      <article className="card wide">
+      <article className="card">
         <h2>Histórico de Geração</h2>
         <div className="chart-wrap">
           <ResponsiveContainer width="100%" height={300}>
@@ -101,7 +101,7 @@ export function HistoryVsForecastChart({
         </div>
       </article>
 
-      <article className="card wide">
+      <article className="card">
         <h2>Perfil Esperado (Média por Hora)</h2>
         <div className="chart-wrap">
           <ResponsiveContainer width="100%" height={300}>
@@ -131,7 +131,7 @@ export function HistoryVsForecastChart({
         </div>
       </article>
 
-      <article className="card wide">
+      <article className="card">
         <h2>Previsão de Geração</h2>
         <div className="chart-wrap">
           <ResponsiveContainer width="100%" height={320}>
