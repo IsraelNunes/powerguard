@@ -1,274 +1,119 @@
 # Spin Guard + Spin Forecast
 
-MVP completo para o Hackathon InovSpin (submissão até **06/03/2026 23:59**), focado em confiabilidade elétrica com IA explicável.
+Plataforma web para operação elétrica com dois módulos integrados:
 
-## 1) Problema
+- **Spin Guard**: monitora medições elétricas, detecta anomalias, calcula risco (0-100), gera alertas e simula cenários what-if.
+- **Spin Forecast**: prevê geração solar (24h/7d/30d), compara com perfil esperado e mostra impacto operacional/financeiro.
 
-Falhas elétricas em ativos industriais costumam ser detectadas tarde, com pouca explicação do porquê do alerta e sem ferramenta prática para simular impacto de mudanças operacionais.
+Stack:
+- Frontend: React + Vite + TypeScript
+- Backend: NestJS + TypeScript
+- Banco: PostgreSQL + Prisma
+- Execução local: Docker Compose
 
-## 2) Solução
+## O que o sistema faz
 
-**Spin Guard** recebe medições elétricas (CSV), detecta anomalias com método robusto, calcula score de risco (0-100), explica variáveis de maior impacto, sugere causa provável e permite simulação what-if de cenários operacionais.
+### Spin Guard
+- Upload de CSV de medições elétricas
+- Detecção de anomalias (Robust Z-Score/MAD)
+- Score de risco com classificação
+- Explicação do alerta e hipótese de causa
+- Timeline de alertas por severidade
+- Simulador what-if (impacto no risco)
 
-**Spin Forecast** prevê geração solar (24h, 7d, 30d), cruza previsão com clima e traduz o resultado em impacto operacional e financeiro.
+### Spin Forecast
+- Cadastro e gestão de usinas solares
+- Histórico de geração + clima
+- Treino e uso de modelo de previsão
+- Gráficos de histórico, perfil esperado e previsão
+- KPIs técnicos e financeiros
+- Integração com risco operacional do Spin Guard
 
-## 3) Stack
-
-- Front-end: React + Vite + TypeScript
-- Back-end: NestJS + TypeScript
-- Banco: PostgreSQL
-- ORM: Prisma
-- Infra local: Docker Compose
-
-## 4) Arquitetura (diagrama textual)
-
-```txt
-[React Dashboard]
-   |  upload CSV / filtros / what-if
-   v
-[NestJS API]
-  |- IngestionModule  -> valida CSV -> salva Measurement
-  |- AnalyticsModule  -> MAD robust z-score -> risco + explicabilidade
-  |- AlertsModule     -> timeline de eventos por severidade
-  |- SimulatorModule  -> cenário what-if e impacto no risco
-  |- MeasurementsModule -> séries temporais
-  |- HealthModule
-   v
-[PostgreSQL + Prisma]
-  Equipment, Measurement, AnalysisRun, AnomalyResult, AlertEvent
-```
-
-## 5) IA aplicada e explicável
-
-Abordagem implementada no backend (TypeScript puro):
-
-1. **Detecção de anomalias**: Robust Z-Score com mediana e MAD por variável (`voltage`, `current`, `power`, `frequency`, `temperature`).
-2. **Score de risco (0-100)**: composição ponderada de componente de anomalia, desvio médio e regras elétricas.
-3. **Classificação**:
-- `0-24 LOW`
-- `25-49 MEDIUM`
-- `50-74 HIGH`
-- `75-100 CRITICAL`
-4. **Explicabilidade**:
-- `featureImpact` por variável
-- texto de explicação com top drivers
-- `rootCauseHint` baseado em regras (ex.: corrente + temperatura elevadas)
-5. **What-if**: aplica deltas em tensão/corrente/temperatura e recalcula risco/explicação.
-6. **Impacto financeiro**:
-- `estimatedDowntimeRiskHours`
-- `potentialAvoidedCostUSD`
-- cálculo heurístico transparente baseado em `criticalCount`, `anomalyCount`, `risk.average` e `risk.current`.
-
-## 6) Funcionalidades implementadas
-
-### Back-end
-
-- Upload CSV com validação robusta
-- Persistência em Postgres
-- Execução de analytics e geração de eventos
-- Timeline de alertas com filtro de severidade
-- Simulador what-if real
-- Impacto financeiro estimado no resumo analítico
-- Healthcheck
-- Teste unitário do motor de risco
-
-### Front-end
-
-- Dashboard com visual industrial
-- Upload + gatilho automático de analytics
-- KPIs executivos (risco atual, eventos 7d, tendência, etc.)
-- KPIs de impacto (custo evitável estimado e risco de indisponibilidade em horas)
-- Gráfico temporal (voltage/current/power/temperature)
-- Lista de alertas por severidade
-- Painel What-if integrado ao endpoint real
-- Estados de loading/erro/vazio
-
-## 7) Endpoints da API
-
-Base URL: `http://localhost:3000/api`
-
-1. `GET /health`
-2. `POST /ingestion/csv`
-3. `GET /measurements?equipmentId=...&from=...&to=...&limit=...`
-4. `POST /analytics/run?equipmentId=...&from=...&to=...&limit=...`
-5. `GET /analytics/summary?equipmentId=...`
-6. `GET /alerts?equipmentId=...&severity=...&from=...&to=...&limit=...`
-7. `POST /simulator/what-if`
-
-## 8) Modelo de dados (Prisma)
-
-- `Equipment`
-- `Measurement`
-- `AnalysisRun`
-- `AnomalyResult`
-- `AlertEvent`
-
-Schema: [schema.prisma](/home/israel/Documentos/spin/backend/prisma/schema.prisma)
-
-## 9) Estrutura do projeto
-
-```txt
-spin/
-  backend/
-    src/
-      analytics/
-      alerts/
-      health/
-      ingestion/
-      measurements/
-      simulator/
-      prisma/
-    prisma/
-      schema.prisma
-  frontend/
-    src/
-      components/
-      features/
-      hooks/
-      lib/
-      pages/
-      styles/
-      types/
-  docs/
-    samples/
-      measurements_sample.csv
-      measurements_stage4.csv
-    API_STAGE3.md
-    PITCH_3MIN.md
-```
-
-## 10) Como rodar (simples e direto)
+## Como rodar localmente
 
 1. Criar arquivo de ambiente:
+
 ```bash
 cp .env.example .env
 ```
 
-2. Subir tudo com Docker:
+2. Subir os serviços:
+
 ```bash
 docker compose up -d --build
 ```
 
-3. Aplicar schema e seed (3 usinas no forecast):
+3. Aplicar schema e carregar dados iniciais:
+
 ```bash
 docker compose exec -T api npm run prisma:push
 docker compose exec -T api npm run prisma:seed
 ```
 
 4. Acessar:
-```txt
-Spin Guard:    http://localhost:5173
-API Health:    http://localhost:3000/api/health
+
+- Frontend: `http://localhost:5173`
+- API health: `http://localhost:3000/api/health`
+
+## Como usar
+
+### Fluxo rápido do Spin Guard
+
+1. Abra o frontend.
+2. Faça upload de um CSV de medições (exemplo em `docs/samples`).
+3. O sistema processa a análise e exibe:
+   - risco atual,
+   - alertas,
+   - gráficos elétricos,
+   - gráfico de risco no tempo.
+4. Use o simulador what-if para testar cenários.
+
+Exemplo de upload via API:
+
+```bash
+curl -X POST http://localhost:3000/api/ingestion/csv \
+  -F "equipmentName=Transformador Demo" \
+  -F "file=@docs/samples/measurements_stage4.csv"
 ```
 
-5. Verificar status dos containers (se precisar):
+### Fluxo rápido do Spin Forecast
+
+1. Clique em **Abrir Spin Forecast** no app.
+2. Selecione uma usina.
+3. Rode treino/previsão (se necessário).
+4. Analise:
+   - geração prevista,
+   - perfil esperado,
+   - tendência e confiança,
+   - receita esperada vs prevista,
+   - perda estimada.
+
+## Datasets de exemplo
+
+Arquivos úteis em `docs/samples`:
+- `measurements_stage4.csv`
+- `measurements_hackathon_test.csv`
+- `measurements_2weeks.csv`
+- `measurements_1month_critical.csv`
+- `solar_generation_sample.csv`
+- `solar_weather_sample.csv`
+
+## Troubleshooting rápido
+
+Ver status dos serviços:
+
 ```bash
 docker compose ps
 ```
 
-## 11) Demo rápida (script técnico)
-
-1. Upload de dataset:
-```bash
-curl -X POST http://localhost:3000/api/ingestion/csv \
-  -F "equipmentName=Stage4 Transformer" \
-  -F "file=@docs/samples/measurements_stage4.csv"
-```
-
-2. Rodar analytics:
-```bash
-curl -X POST "http://localhost:3000/api/analytics/run?equipmentId=<EQUIPMENT_ID>"
-```
-
-3. Obter resumo:
-```bash
-curl "http://localhost:3000/api/analytics/summary?equipmentId=<EQUIPMENT_ID>"
-```
-
-Exemplo de campos de impacto no `summary`:
-```json
-{
-  "summary": {
-    "risk": { "current": 82, "average": 61.3, "max": 97, "min": 12 },
-    "criticalCount": 37,
-    "impact": {
-      "estimatedDowntimeRiskHours": 21.6,
-      "potentialAvoidedCostUSD": 25840
-    }
-  }
-}
-```
-
-4. Listar alertas:
-```bash
-curl "http://localhost:3000/api/alerts?equipmentId=<EQUIPMENT_ID>&severity=CRITICAL&limit=10"
-```
-
-5. Simular cenário what-if:
-```bash
-curl -X POST http://localhost:3000/api/simulator/what-if \
-  -H "Content-Type: application/json" \
-  -d '{
-    "equipmentId":"<EQUIPMENT_ID>",
-    "currentDeltaPercent":10,
-    "voltageDeltaPercent":-5,
-    "temperatureDeltaPercent":12
-  }'
-```
-
-## 12) Variáveis de ambiente
-
-Arquivo base: [.env.example](/home/israel/Documentos/spin/.env.example)
-
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_PORT` (use `5433` se `5432` já estiver em uso)
-- `API_PORT`
-- `FRONTEND_PORT`
-- `DATABASE_URL`
-- `VITE_API_BASE_URL`
-
-## 13) Qualidade de engenharia
-
-- Validação de entrada (DTO + ValidationPipe)
-- Estrutura modular no NestJS
-- Logs de ingestão/execução
-- Teste unitário do motor de risco (`analytics.engine.spec.ts`)
-- Docker Compose com serviços integrados
-- Métrica de impacto de negócio para comunicação executiva durante a demo
-
-## 14) Documentação para apresentação
-
-Pitch consolidado (duas soluções):
-- [PITCH_SPIN_GUARD_FORECAST_3MIN.md](/home/israel/Documentos/spin/docs/PITCH_SPIN_GUARD_FORECAST_3MIN.md)
-
-FAQ por solução:
-- [FAQ_SPIN_GUARD.md](/home/israel/Documentos/spin/docs/FAQ_SPIN_GUARD.md)
-- [FAQ_SPIN_FORECAST.md](/home/israel/Documentos/spin/docs/FAQ_SPIN_FORECAST.md)
-
-Material legado (opcional):
-- [PITCH_3MIN.md](/home/israel/Documentos/spin/docs/PITCH_3MIN.md)
-- [FAQ_AVALIADOR.md](/home/israel/Documentos/spin/docs/FAQ_AVALIADOR.md)
-
-## 15) Troubleshooting
-
-### API não responde em `:3000`
+Ver logs da API:
 
 ```bash
-docker compose ps -a
 docker compose logs api --tail=200
 ```
 
-### Conflito de porta Postgres
-
-Ajustar `.env`:
-```env
-POSTGRES_PORT=5433
-```
-
-### Reaplicar schema Prisma
+Se precisar reaplicar schema:
 
 ```bash
-docker compose exec api npm run prisma:push
+docker compose exec -T api npm run prisma:push
 ```
