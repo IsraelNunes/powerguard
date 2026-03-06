@@ -6,6 +6,11 @@ Resolvemos detecção tardia de risco elétrico operacional para equipes de oper
 ## 2) Como o score de risco (0–100) é calculado exatamente?
 O score combina 3 componentes: anomalia, desvio médio e regras elétricas, com pesos `0.45`, `0.35`, `0.20`, e normalização para `0–100`.
 
+Complemento para a banca:
+- `0.45` para anomalia porque captura comportamento raro com maior sensibilidade.
+- `0.35` para desvio para refletir afastamento contínuo do baseline.
+- `0.20` para regras para incorporar conhecimento elétrico sem sobrepor o sinal estatístico.
+
 ## 3) Por que escolheram Robust Z-Score (MAD) em vez de outro método?
 Porque é robusto a outliers, simples, explicável e rápido para um MVP em TypeScript.
 
@@ -28,7 +33,19 @@ O módulo de ingestão valida colunas obrigatórias, tipos, ordenação temporal
 Upload CSV -> validação/persistência -> execução de analytics -> geração de alertas -> dashboard com KPIs/série/timeline -> simulação what-if.
 
 ## 10) Quais KPIs executivos o dashboard entrega para tomada de decisão?
-Risco atual, eventos na semana, tendência, tempo desde último crítico, médias de tensão/temperatura e total de medições.
+Risco atual, eventos na semana, tendência, tempo desde último crítico, médias de tensão/temperatura, total de medições, custo evitável estimado (USD) e risco de indisponibilidade (horas).
+
+## 10.1) Como vocês calculam impacto financeiro e por que isso é confiável?
+No MVP usamos um modelo heurístico transparente, baseado em:
+- quantidade de eventos críticos
+- quantidade de anomalias
+- risco médio e risco atual da janela
+
+Saídas:
+- `estimatedDowntimeRiskHours`
+- `potentialAvoidedCostUSD`
+
+É confiável para priorização relativa entre cenários e ativos. Em produção, os coeficientes devem ser calibrados com histórico real de manutenção e custo da planta.
 
 ## 11) O que já está 100% funcional e o que ainda é roadmap?
 Funcional: ingestão, analytics, alertas, dashboard e what-if real. Roadmap: autenticação robusta, streaming e integrações industriais diretas.

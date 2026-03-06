@@ -20,6 +20,42 @@ export class AnalyticsService {
     return `Risco ${labels[level]}`;
   }
 
+  private calculateBusinessImpact(params: {
+    criticalCount: number;
+    anomalyCount: number;
+    riskAverage: number;
+    riskCurrent: number;
+    totalMeasurements: number;
+  }) {
+    const {
+      criticalCount,
+      anomalyCount,
+      riskAverage,
+      riskCurrent,
+      totalMeasurements
+    } = params;
+
+    const criticalRate = totalMeasurements > 0 ? criticalCount / totalMeasurements : 0;
+    const anomalyRate = totalMeasurements > 0 ? anomalyCount / totalMeasurements : 0;
+    const riskFactor = (riskAverage + riskCurrent) / 200;
+
+    const estimatedDowntimeRiskHours = Number(
+      (criticalCount * 0.9 + anomalyCount * 0.12 + riskFactor * 4).toFixed(2)
+    );
+
+    const potentialAvoidedCostUSD = Math.round(
+      estimatedDowntimeRiskHours * 850 +
+        criticalCount * 450 +
+        anomalyCount * 40 +
+        (criticalRate + anomalyRate) * 1200
+    );
+
+    return {
+      estimatedDowntimeRiskHours,
+      potentialAvoidedCostUSD
+    };
+  }
+
   private chunk<T>(items: T[], size = AnalyticsService.CHUNK_SIZE): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < items.length; i += size) {
@@ -86,18 +122,31 @@ export class AnalyticsService {
     const anomalyCount = evaluations.filter((entry) => entry.evaluated.isAnomaly).length;
     const criticalCount = evaluations.filter((entry) => entry.evaluated.riskLevel === 'CRITICAL').length;
 
+    const riskAverage = Number(
+      (riskScores.reduce((acc, score) => acc + score, 0) / riskScores.length).toFixed(2)
+    );
+    const riskCurrent = evaluations[evaluations.length - 1].evaluated.riskScore;
+    const impact = this.calculateBusinessImpact({
+      criticalCount,
+      anomalyCount,
+      riskAverage,
+      riskCurrent,
+      totalMeasurements: measurements.length
+    });
+
     const summary = {
       equipmentId: query.equipmentId,
       totalMeasurements: measurements.length,
       anomalyCount,
       anomalyRate: Number((anomalyCount / measurements.length).toFixed(4)),
       risk: {
-        current: evaluations[evaluations.length - 1].evaluated.riskScore,
-        average: Number((riskScores.reduce((acc, score) => acc + score, 0) / riskScores.length).toFixed(2)),
+        current: riskCurrent,
+        average: riskAverage,
         max: Math.max(...riskScores),
         min: Math.min(...riskScores)
       },
       criticalCount,
+      impact,
       computedAt: new Date().toISOString()
     };
 

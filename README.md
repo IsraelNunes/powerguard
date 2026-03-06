@@ -9,6 +9,7 @@ Falhas elétricas em ativos industriais costumam ser detectadas tarde, com pouca
 ## 2) Solução
 
 PowerGuard AI recebe medições elétricas (CSV), detecta anomalias com método robusto, calcula score de risco (0-100), explica variáveis de maior impacto, sugere causa provável e permite simulação what-if de cenários operacionais.
+Além disso, o sistema estima **impacto de negócio** (risco de indisponibilidade e custo evitável estimado) para apoiar priorização executiva.
 
 ## 3) Stack
 
@@ -52,6 +53,10 @@ Abordagem implementada no backend (TypeScript puro):
 - texto de explicação com top drivers
 - `rootCauseHint` baseado em regras (ex.: corrente + temperatura elevadas)
 5. **What-if**: aplica deltas em tensão/corrente/temperatura e recalcula risco/explicação.
+6. **Impacto financeiro**:
+- `estimatedDowntimeRiskHours`
+- `potentialAvoidedCostUSD`
+- cálculo heurístico transparente baseado em `criticalCount`, `anomalyCount`, `risk.average` e `risk.current`.
 
 ## 6) Funcionalidades implementadas
 
@@ -62,6 +67,7 @@ Abordagem implementada no backend (TypeScript puro):
 - Execução de analytics e geração de eventos
 - Timeline de alertas com filtro de severidade
 - Simulador what-if real
+- Impacto financeiro estimado no resumo analítico
 - Healthcheck
 - Teste unitário do motor de risco
 
@@ -70,6 +76,7 @@ Abordagem implementada no backend (TypeScript puro):
 - Dashboard com visual industrial
 - Upload + gatilho automático de analytics
 - KPIs executivos (risco atual, eventos 7d, tendência, etc.)
+- KPIs de impacto (custo evitável estimado e risco de indisponibilidade em horas)
 - Gráfico temporal (voltage/current/power/temperature)
 - Lista de alertas por severidade
 - Painel What-if integrado ao endpoint real
@@ -165,6 +172,20 @@ curl -X POST "http://localhost:3000/api/analytics/run?equipmentId=<EQUIPMENT_ID>
 curl "http://localhost:3000/api/analytics/summary?equipmentId=<EQUIPMENT_ID>"
 ```
 
+Exemplo de campos de impacto no `summary`:
+```json
+{
+  "summary": {
+    "risk": { "current": 82, "average": 61.3, "max": 97, "min": 12 },
+    "criticalCount": 37,
+    "impact": {
+      "estimatedDowntimeRiskHours": 21.6,
+      "potentialAvoidedCostUSD": 25840
+    }
+  }
+}
+```
+
 4. Listar alertas:
 ```bash
 curl "http://localhost:3000/api/alerts?equipmentId=<EQUIPMENT_ID>&severity=CRITICAL&limit=10"
@@ -202,6 +223,7 @@ Arquivo base: [.env.example](/home/israel/Documentos/spin/.env.example)
 - Logs de ingestão/execução
 - Teste unitário do motor de risco (`analytics.engine.spec.ts`)
 - Docker Compose com serviços integrados
+- Métrica de impacto de negócio para comunicação executiva durante a demo
 
 ## 14) Roteiro do pitch (3 minutos)
 

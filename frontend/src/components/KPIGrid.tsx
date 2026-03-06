@@ -23,6 +23,15 @@ function trendVisual(value: number): string {
   return '→';
 }
 
+function formatUsd(value?: number): string {
+  if (value == null) return '-';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
 export function KPIGrid({ summary, measurements, trend, loading }: Props) {
   if (loading) {
     return <article className="card">Carregando KPIs...</article>;
@@ -73,6 +82,14 @@ export function KPIGrid({ summary, measurements, trend, loading }: Props) {
         <div className="kpi">
           <span>Última leitura</span>
           <strong>{latest ? new Date(latest.timestamp).toLocaleString() : '-'}</strong>
+        </div>
+        <div className="kpi">
+          <span>Custo evitável estimado</span>
+          <strong>{formatUsd(summary?.summary.impact?.potentialAvoidedCostUSD)}</strong>
+        </div>
+        <div className="kpi">
+          <span>Risco de indisponibilidade (h)</span>
+          <strong>{summary?.summary.impact?.estimatedDowntimeRiskHours ?? '-'}</strong>
         </div>
       </div>
 

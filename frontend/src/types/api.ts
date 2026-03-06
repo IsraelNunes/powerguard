@@ -52,6 +52,10 @@ export interface AnalyticsRunResponse {
       min: number;
     };
     criticalCount: number;
+    impact?: {
+      estimatedDowntimeRiskHours: number;
+      potentialAvoidedCostUSD: number;
+    };
     computedAt: string;
   };
 }
@@ -74,6 +78,10 @@ export interface AnalyticsSummaryResponse {
       min: number;
     };
     criticalCount: number;
+    impact?: {
+      estimatedDowntimeRiskHours: number;
+      potentialAvoidedCostUSD: number;
+    };
     computedAt: string;
   };
   reliability: {
