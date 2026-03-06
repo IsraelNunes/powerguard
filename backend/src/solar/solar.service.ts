@@ -123,6 +123,14 @@ interface SolarGenerationPointRow {
   capacityFactor: number | null;
 }
 
+interface SolarTrainRow {
+  timestampUtc: Date;
+  generationMw: number;
+  ghiWm2: number | null;
+  tempC: number | null;
+  windSpeedMs: number | null;
+}
+
 @Injectable()
 export class SolarService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SolarService.name);
@@ -162,6 +170,44 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
     const parsed = Number(normalized);
     if (!Number.isFinite(parsed)) return null;
     return parsed;
+  }
+
+  private dot(a: number[], b: number[]): number {
+    let out = 0;
+    for (let i = 0; i < a.length; i += 1) out += a[i] * b[i];
+    return out;
+  }
+
+  private trainRidgeGradientDescent(
+    X: number[][],
+    y: number[],
+    options?: { lambda?: number; learningRate?: number; epochs?: number }
+  ) {
+    const lambda = options?.lambda ?? 0.08;
+    const learningRate = options?.learningRate ?? 0.04;
+    const epochs = options?.epochs ?? 800;
+    const n = X.length;
+    const p = X[0].length;
+    const w = new Array<number>(p).fill(0);
+
+    for (let epoch = 0; epoch < epochs; epoch += 1) {
+      const gradients = new Array<number>(p).fill(0);
+      for (let i = 0; i < n; i += 1) {
+        const err = this.dot(w, X[i]) - y[i];
+        for (let j = 0; j < p; j += 1) {
+          gradients[j] += (2 / n) * err * X[i][j];
+        }
+      }
+
+      for (let j = 1; j < p; j += 1) {
+        gradients[j] += 2 * lambda * w[j];
+      }
+      for (let j = 0; j < p; j += 1) {
+        w[j] -= learningRate * gradients[j];
+      }
+    }
+
+    return w;
   }
 
   private async upsertWeatherRows(params: {
@@ -874,7 +920,7 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException(`plantId not found: ${payload.plantId}`);
     }
 
-    const algorithm = payload.algorithm ?? 'HOURLY_PROFILE_V1';
+    const algorithm = payload.algorithm ?? 'RIDGE_LAGS_CLIMATE_V2';
     const params = {
       trainWindowDays: payload.trainWindowDays ?? 365,
       algorithm,
@@ -1008,13 +1054,30 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
     );
     const maxHorizon = Math.max(...horizons);
 
-    const artifact = this.parseJsonField<{ hourMeans?: Record<string, number> }>(model.artifactJson, {});
+    const artifact = this.parseJsonField<{
+      hourMeans?: Record<string, number>;
+      weatherHourMeans?: Record<string, { ghi: number; temp: number; wind: number }>;
+      coefficients?: number[];
+      mode?: string;
+    }>(model.artifactJson, {});
     const hourMeans = artifact.hourMeans ?? {};
+    const weatherHourMeans = artifact.weatherHourMeans ?? {};
+    const coefficients = artifact.coefficients ?? null;
+    const mode = artifact.mode ?? 'V1_FALLBACK';
     const metrics = this.parseJsonField<{ rmse?: number }>(model.metricsJson, {});
     const baseSigma = Math.max(0.05, metrics.rmse ?? 0.2);
 
     const now = this.normalizeHourUtc(new Date());
     const runAt = new Date();
+
+    const latestGen = await this.prisma.$queryRaw<{ generationMw: number }[]>`
+      SELECT generation_mw AS "generationMw"
+      FROM solar_generation_hourly
+      WHERE plant_id = ${payload.plantId}
+      ORDER BY timestamp_utc DESC
+      LIMIT 1
+    `;
+    let prevGenerationMw = latestGen[0]?.generationMw ?? 0;
 
     await this.prisma.$executeRaw`
       DELETE FROM solar_forecast
@@ -1028,10 +1091,25 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       const target = new Date(now);
       target.setUTCHours(target.getUTCHours() + h);
       const hour = target.getUTCHours();
+      const hourProfile = (hourMeans[String(hour)] ?? 0) / Math.max(plant.installedCapacityMw, 0.001);
+      const weatherMean = weatherHourMeans[String(hour)] ?? { ghi: 0, temp: 25, wind: 2 };
+      const features = [
+        1,
+        hourProfile,
+        weatherMean.ghi / 1000,
+        weatherMean.temp / 40,
+        weatherMean.wind / 15,
+        prevGenerationMw / Math.max(plant.installedCapacityMw, 0.001)
+      ];
+      const yNorm =
+        mode === 'V2_CLIMATE' && coefficients && coefficients.length === features.length
+          ? this.dot(coefficients, features)
+          : hourProfile;
       const yHat = Math.max(
         0,
-        Math.min(plant.installedCapacityMw * 1.1, Number((hourMeans[String(hour)] ?? 0).toFixed(4)))
+        Math.min(plant.installedCapacityMw * 1.1, Number((yNorm * plant.installedCapacityMw).toFixed(4)))
       );
+      prevGenerationMw = yHat;
       const cf = Number((yHat / plant.installedCapacityMw).toFixed(4));
       const sigmaH = baseSigma * (1 + h * 0.01);
       const p10 = Math.max(0, Number((yHat - 1.28 * sigmaH).toFixed(4)));
@@ -1258,7 +1336,7 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       activateModel?: boolean;
     }>(job.paramsJson, {});
     const trainWindowDays = params.trainWindowDays ?? 365;
-    const algorithm = params.algorithm ?? 'HOURLY_PROFILE_V1';
+    const algorithm = params.algorithm ?? 'RIDGE_LAGS_CLIMATE_V2';
     const activateModel = params.activateModel ?? true;
 
     try {
@@ -1266,20 +1344,29 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       const windowStart = new Date(windowEnd);
       windowStart.setUTCDate(windowStart.getUTCDate() - trainWindowDays);
 
-      const rows = await this.prisma.$queryRaw<{ timestampUtc: Date; generationMw: number }[]>`
+      const rows = await this.prisma.$queryRaw<SolarTrainRow[]>`
         SELECT
-          timestamp_utc AS "timestampUtc",
-          generation_mw AS "generationMw"
-        FROM solar_generation_hourly
-        WHERE plant_id = ${job.plantId}
-          AND timestamp_utc >= ${windowStart}
-          AND timestamp_utc <= ${windowEnd}
-        ORDER BY timestamp_utc ASC
+          g.timestamp_utc AS "timestampUtc",
+          g.generation_mw AS "generationMw",
+          w.ghi_wm2 AS "ghiWm2",
+          w.temp_c AS "tempC",
+          w.wind_speed_ms AS "windSpeedMs"
+        FROM solar_generation_hourly g
+        LEFT JOIN solar_weather_hourly w
+          ON w.plant_id = g.plant_id
+         AND w.timestamp_utc = g.timestamp_utc
+        WHERE g.plant_id = ${job.plantId}
+          AND g.timestamp_utc >= ${windowStart}
+          AND g.timestamp_utc <= ${windowEnd}
+        ORDER BY g.timestamp_utc ASC
       `;
 
       if (rows.length < 72) {
         throw new BadRequestException('at least 72 hourly points are required for training');
       }
+
+      const plant = await this.getPlantOrFail(job.plantId);
+      const capacity = Math.max(plant.installedCapacityMw, 0.001);
 
       const split = Math.max(48, Math.floor(rows.length * 0.8));
       const trainRows = rows.slice(0, split);
@@ -1303,9 +1390,74 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
         hourMeans[String(hour)] = bucket && bucket.count > 0 ? Number((bucket.sum / bucket.count).toFixed(4)) : 0;
       }
 
-      const predict = (timestamp: Date): number => {
-        const hour = new Date(timestamp).getUTCHours();
-        return hourMeans[String(hour)] ?? 0;
+      const weatherHourBuckets = new Map<number, { ghiSum: number; ghiN: number; tempSum: number; tempN: number; windSum: number; windN: number }>();
+      for (const row of trainRows) {
+        const hour = new Date(row.timestampUtc).getUTCHours();
+        const acc = weatherHourBuckets.get(hour) ?? {
+          ghiSum: 0,
+          ghiN: 0,
+          tempSum: 0,
+          tempN: 0,
+          windSum: 0,
+          windN: 0
+        };
+        if (row.ghiWm2 != null) {
+          acc.ghiSum += row.ghiWm2;
+          acc.ghiN += 1;
+        }
+        if (row.tempC != null) {
+          acc.tempSum += row.tempC;
+          acc.tempN += 1;
+        }
+        if (row.windSpeedMs != null) {
+          acc.windSum += row.windSpeedMs;
+          acc.windN += 1;
+        }
+        weatherHourBuckets.set(hour, acc);
+      }
+
+      const weatherHourMeans: Record<string, { ghi: number; temp: number; wind: number }> = {};
+      for (let hour = 0; hour < 24; hour += 1) {
+        const b = weatherHourBuckets.get(hour);
+        weatherHourMeans[String(hour)] = {
+          ghi: b && b.ghiN > 0 ? b.ghiSum / b.ghiN : 0,
+          temp: b && b.tempN > 0 ? b.tempSum / b.tempN : 25,
+          wind: b && b.windN > 0 ? b.windSum / b.windN : 2
+        };
+      }
+
+      const buildFeatures = (current: SolarTrainRow, prevGenerationMw: number) => {
+        const hour = new Date(current.timestampUtc).getUTCHours();
+        const hourProfile = (hourMeans[String(hour)] ?? 0) / capacity;
+        const weatherMean = weatherHourMeans[String(hour)] ?? { ghi: 0, temp: 25, wind: 2 };
+        const ghi = (current.ghiWm2 ?? weatherMean.ghi) / 1000;
+        const temp = (current.tempC ?? weatherMean.temp) / 40;
+        const wind = (current.windSpeedMs ?? weatherMean.wind) / 15;
+        const lag1 = prevGenerationMw / capacity;
+        return [1, hourProfile, ghi, temp, wind, lag1];
+      };
+
+      const X: number[][] = [];
+      const y: number[] = [];
+      for (let i = 1; i < trainRows.length; i += 1) {
+        X.push(buildFeatures(trainRows[i], trainRows[i - 1].generationMw));
+        y.push(trainRows[i].generationMw / capacity);
+      }
+
+      const weatherCoverageTrain =
+        trainRows.length > 0
+          ? trainRows.filter((r) => r.ghiWm2 != null || r.tempC != null || r.windSpeedMs != null).length /
+            trainRows.length
+          : 0;
+      const useV2 = algorithm === 'RIDGE_LAGS_CLIMATE_V2' && weatherCoverageTrain >= 0.1 && X.length >= 30;
+      const weights = useV2 ? this.trainRidgeGradientDescent(X, y) : null;
+
+      const predict = (row: SolarTrainRow, prevGenerationMw: number): number => {
+        const hour = new Date(row.timestampUtc).getUTCHours();
+        if (!useV2 || !weights) return hourMeans[String(hour)] ?? 0;
+        const features = buildFeatures(row, prevGenerationMw);
+        const yNorm = this.dot(weights, features);
+        return Math.max(0, Math.min(capacity * 1.1, yNorm * capacity));
       };
 
       let absErrorSum = 0;
@@ -1313,9 +1465,10 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       let squaredErrorSum = 0;
       let mapeCount = 0;
 
+      let prev = trainRows[trainRows.length - 1].generationMw;
       for (const row of testRows) {
         const y = row.generationMw;
-        const yHat = predict(row.timestampUtc);
+        const yHat = predict(row, prev);
         const absError = Math.abs(y - yHat);
         absErrorSum += absError;
         squaredErrorSum += (y - yHat) ** 2;
@@ -1323,13 +1476,22 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
           absPercentErrorSum += Math.abs((y - yHat) / y);
           mapeCount += 1;
         }
+        prev = y;
       }
 
       const mae = Number((absErrorSum / testRows.length).toFixed(4));
       const rmse = Number(Math.sqrt(squaredErrorSum / testRows.length).toFixed(4));
       const mape = Number(((mapeCount > 0 ? absPercentErrorSum / mapeCount : 0) * 100).toFixed(4));
 
-      const metrics = { mae, rmse, mape, testPoints: testRows.length, trainPoints: trainRows.length };
+      const metrics = {
+        mae,
+        rmse,
+        mape,
+        testPoints: testRows.length,
+        trainPoints: trainRows.length,
+        weatherCoverageTrain: Number((weatherCoverageTrain * 100).toFixed(2)),
+        modelMode: useV2 ? 'V2_CLIMATE' : 'V1_FALLBACK'
+      };
       const version = `v${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12)}`;
       const modelId = this.buildId('smv');
 
@@ -1362,13 +1524,27 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
           ${job.plantId},
           ${version},
           ${algorithm},
-          ${JSON.stringify(['hour_profile'])}::jsonb,
-          ${JSON.stringify({ method: 'hourly_mean' })}::jsonb,
+          ${
+            JSON.stringify(
+              useV2
+                ? ['bias', 'hour_profile', 'ghi_norm', 'temp_norm', 'wind_norm', 'lag1_norm']
+                : ['hour_profile']
+            )
+          }::jsonb,
+          ${JSON.stringify({ method: useV2 ? 'ridge_gd' : 'hourly_mean_fallback' })}::jsonb,
           ${JSON.stringify(metrics)}::jsonb,
           ${rows[0].timestampUtc},
           ${rows[rows.length - 1].timestampUtc},
           ${activateModel},
-          ${JSON.stringify({ hourMeans })}::jsonb,
+          ${
+            JSON.stringify({
+              hourMeans,
+              weatherHourMeans,
+              coefficients: weights,
+              capacityMw: capacity,
+              mode: useV2 ? 'V2_CLIMATE' : 'V1_FALLBACK'
+            })
+          }::jsonb,
           NOW()
         )
       `;
