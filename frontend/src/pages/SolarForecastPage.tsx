@@ -122,6 +122,58 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
     [modelsQuery.data]
   );
 
+  const decision = useMemo(() => {
+    const forecastItems = forecastQuery.data?.items ?? [];
+    if (forecastItems.length === 0 || !summaryQuery.data) {
+      return null;
+    }
+
+    const historyItems = generationQuery.data?.items ?? [];
+    const buckets = new Map<number, { sum: number; count: number }>();
+    for (const item of historyItems) {
+      const hour = new Date(item.timestamp).getHours();
+      const acc = buckets.get(hour) ?? { sum: 0, count: 0 };
+      acc.sum += item.generationMw;
+      acc.count += 1;
+      buckets.set(hour, acc);
+    }
+    const baselineByHour = new Map<number, number>();
+    for (let hour = 0; hour < 24; hour += 1) {
+      const bucket = buckets.get(hour);
+      baselineByHour.set(hour, bucket && bucket.count > 0 ? bucket.sum / bucket.count : 0);
+    }
+
+    const forecastAvg =
+      forecastItems.reduce((sum, item) => sum + item.predGenerationMw, 0) / forecastItems.length;
+    const baselineAvg =
+      forecastItems.reduce((sum, item) => {
+        const hour = new Date(item.timestamp).getHours();
+        return sum + (baselineByHour.get(hour) ?? item.predGenerationMw);
+      }, 0) / forecastItems.length;
+    const deficitPercent =
+      baselineAvg > 0 ? Number((((forecastAvg - baselineAvg) / baselineAvg) * 100).toFixed(2)) : 0;
+
+    const delta = summaryQuery.data.riskBridge.delta;
+    const highRisk = summaryQuery.data.riskBridge.amplifiedRisk >= 75;
+    const lowSolar = summaryQuery.data.forecast24h.avgCapacityFactor < 0.3;
+
+    let recommendation = 'Monitorar operação normalmente e manter avaliação contínua.';
+    if (lowSolar && highRisk) {
+      recommendation =
+        'Ação imediata: sincronizar alerta contextual, reduzir dependência solar e priorizar contingência.';
+    } else if (lowSolar || delta >= 8) {
+      recommendation =
+        'Ação preventiva: revisar despacho das próximas horas e preparar ajuste de carga crítica.';
+    }
+
+    return {
+      forecastAvg: Number(forecastAvg.toFixed(2)),
+      baselineAvg: Number(baselineAvg.toFixed(2)),
+      deficitPercent,
+      recommendation
+    };
+  }, [forecastQuery.data, generationQuery.data, summaryQuery.data]);
+
   return (
     <main className="layout">
       <header className="topbar row-between">
@@ -256,9 +308,38 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
           <p className="muted">{summaryQuery.data?.riskBridge.reason}</p>
         </article>
 
+        <article className="card wide critical-card">
+          <div className="critical-head">
+            <h2>Painel de Decisão Operacional</h2>
+            <span className="critical-badge">Ação Recomendada</span>
+          </div>
+          {!decision ? (
+            <p className="muted">Rode previsão para receber diagnóstico operacional.</p>
+          ) : (
+            <>
+              <div className="critical-metrics">
+                <div>
+                  <small>Previsão Média</small>
+                  <strong>{decision.forecastAvg} MW</strong>
+                </div>
+                <div>
+                  <small>Perfil Esperado</small>
+                  <strong>{decision.baselineAvg} MW</strong>
+                </div>
+                <div>
+                  <small>Déficit vs Esperado</small>
+                  <strong>{decision.deficitPercent}%</strong>
+                </div>
+              </div>
+              <p className="muted">{decision.recommendation}</p>
+            </>
+          )}
+        </article>
+
         <HistoryVsForecastChart
           generation={generationQuery.data}
           forecast={forecastQuery.data}
+          installedCapacityMw={summaryQuery.data?.plant.installedCapacityMw}
           loading={generationQuery.isLoading || forecastQuery.isLoading}
         />
       </section>
