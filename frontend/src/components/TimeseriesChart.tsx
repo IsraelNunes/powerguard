@@ -4,6 +4,7 @@ import {
   Legend,
   Line,
   LineChart,
+  Scatter,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -51,7 +52,20 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
     );
   }
 
-  const alertSet = new Set(alerts.map((alert) => alert.timestamp));
+  const alertMap = new Map(alerts.map((alert) => [alert.timestamp, alert.severity] as const));
+  const alertMarkers = points
+    .filter((point) => alertMap.has(point.timestamp))
+    .map((point) => ({
+      ...point,
+      severity: alertMap.get(point.timestamp) ?? 'LOW'
+    }));
+
+  const severityColor: Record<string, string> = {
+    LOW: '#0b7a4f',
+    MEDIUM: '#9a6b00',
+    HIGH: '#ad4c00',
+    CRITICAL: '#a11717'
+  };
 
   return (
     <article className="card wide">
@@ -96,14 +110,28 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
             {activeMetrics.temperature ? (
               <Line type="monotone" dataKey="temperature" stroke="#d62728" dot={false} />
             ) : null}
+            {activeMetrics.temperature ? (
+              <Scatter
+                data={alertMarkers}
+                dataKey="temperature"
+                name="Alertas"
+                shape={(props: { cx?: number; cy?: number; payload?: { severity?: string } }) => {
+                  const { cx, cy, payload } = props;
+                  if (typeof cx !== 'number' || typeof cy !== 'number') return <circle r={0} />;
+                  const severity = payload?.severity ?? 'LOW';
+                  const color = severityColor[severity] ?? '#a11717';
+                  return <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />;
+                }}
+              />
+            ) : null}
           </LineChart>
         </ResponsiveContainer>
       </div>
       {!Object.values(activeMetrics).some(Boolean) ? (
         <p className="muted">Selecione ao menos uma métrica para visualizar.</p>
       ) : null}
-      {alertSet.size > 0 ? (
-        <p className="muted">Medições com alerta foram identificadas na análise.</p>
+      {alertMarkers.length > 0 ? (
+        <p className="muted">Marcadores de alerta exibidos na série de temperatura (cores por severidade).</p>
       ) : null}
     </article>
   );
