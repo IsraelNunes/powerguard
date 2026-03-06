@@ -1,12 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
 :root {
-  --bg: #eef2f6;
-  --surface: #ffffff;
-  --border: #d2dce7;
-  --text: #10223b;
-  --muted: #627892;
-  --accent: #1497b8;
+  --bg: #e8edf4;
+  --surface: #f8fbff;
+  --surface-strong: #ffffff;
+  --border: #c8d4e2;
+  --text: #0c1f36;
+  --muted: #5f7289;
+  --accent: #0d8fb0;
+  --accent-strong: #087694;
   --ok: #0f9d65;
-  --danger: #c62828;
+  --danger: #bf2d2d;
+  --shadow-soft: 0 10px 24px rgba(19, 47, 76, 0.08);
+  --shadow-card: 0 18px 40px rgba(15, 37, 60, 0.08);
 }
 
 * {
@@ -15,25 +21,41 @@
 
 body {
   margin: 0;
-  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
-  background: linear-gradient(150deg, #f6fbff 0%, var(--bg) 52%);
+  font-family: 'Space Grotesk', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at 10% -15%, rgba(22, 123, 154, 0.18), transparent 28%),
+    radial-gradient(circle at 95% -10%, rgba(8, 118, 148, 0.14), transparent 30%),
+    linear-gradient(160deg, #f5f9ff 0%, var(--bg) 55%);
   color: var(--text);
+  letter-spacing: 0.01em;
 }
 
 .layout {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 20px;
+  padding: 22px;
+}
+
+.topbar {
+  margin-bottom: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #c9d7e7;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(245, 251, 255, 0.96));
+  box-shadow: var(--shadow-soft);
 }
 
 .topbar h1 {
   margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: 0.01em;
 }
 
 .topbar p {
   margin: 4px 0 0;
   color: var(--muted);
+  font-size: 0.98rem;
 }
 
 .row-between {
@@ -47,10 +69,12 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid #cad8e7;
   border-radius: 999px;
-  padding: 8px 14px;
-  background: var(--surface);
+  padding: 8px 13px;
+  background: #ffffff;
+  box-shadow: 0 5px 12px rgba(20, 47, 71, 0.08);
+  font-weight: 600;
 }
 
 .dot {
@@ -80,14 +104,22 @@ body {
 
 .card {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
+  border-radius: 16px;
+  background: linear-gradient(175deg, var(--surface-strong), var(--surface));
   padding: 18px;
+  box-shadow: var(--shadow-card);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 44px rgba(15, 37, 60, 0.1);
 }
 
 .card h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.24rem;
+  letter-spacing: 0.01em;
 }
 
 .card.wide {
@@ -116,32 +148,56 @@ button {
 }
 
 input[type='text'],
+input[type='number'],
 input[type='file'],
 select {
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid #c4d1df;
+  border-radius: 11px;
   padding: 10px 12px;
-  background: #f9fbfd;
+  background: #f4f9ff;
+  color: #18324f;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+input[type='text']:focus,
+input[type='number']:focus,
+input[type='file']:focus,
+select:focus {
+  border-color: #68a9cb;
+  box-shadow: 0 0 0 3px rgba(66, 154, 191, 0.18);
+  outline: none;
 }
 
 button {
   border: none;
-  border-radius: 10px;
+  border-radius: 11px;
   padding: 11px 14px;
-  background: var(--accent);
+  background: linear-gradient(165deg, var(--accent), var(--accent-strong));
   color: #fff;
   cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 18px rgba(12, 115, 144, 0.25);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: saturate(1.06);
+  box-shadow: 0 12px 22px rgba(12, 115, 144, 0.32);
 }
 
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 button.secondary {
-  background: #eef5fb;
-  color: #17446e;
-  border: 1px solid #c7d8e8;
+  background: linear-gradient(165deg, #f5f9ff, #e7f0f9);
+  color: #19456b;
+  border: 1px solid #b9cfe4;
+  box-shadow: 0 8px 14px rgba(29, 66, 98, 0.12);
 }
 
 .muted {
@@ -166,9 +222,9 @@ button.secondary {
 
 .kpi {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
-  background: #f8fbff;
+  border-radius: 12px;
+  padding: 11px;
+  background: linear-gradient(170deg, #ffffff, #f1f7fe);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -177,6 +233,10 @@ button.secondary {
 .kpi span {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.kpi strong {
+  font-size: 1.1rem;
 }
 
 .mini-trend-grid {
@@ -188,9 +248,9 @@ button.secondary {
 
 .mini-trend {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px;
-  background: #fdfefe;
+  background: linear-gradient(165deg, #ffffff, #f3f9ff);
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -210,9 +270,9 @@ button.secondary {
 
 .alert-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px;
-  background: #fbfcff;
+  background: linear-gradient(170deg, #ffffff, #f3f8fe);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -248,6 +308,10 @@ button.secondary {
 .hint {
   margin-top: 14px;
   color: var(--muted);
+  padding: 12px 14px;
+  border: 1px dashed #bdd2e5;
+  border-radius: 12px;
+  background: rgba(248, 252, 255, 0.8);
 }
 
 .sim-result {
@@ -260,6 +324,11 @@ button.secondary {
 
 .chart-wrap {
   margin-top: 10px;
+  border: 1px solid #d1ddeb;
+  border-radius: 12px;
+  padding: 8px 6px 2px;
+  background:
+    linear-gradient(180deg, rgba(245, 251, 255, 0.9), rgba(252, 254, 255, 0.96));
 }
 
 .timeseries-grid {
@@ -323,8 +392,8 @@ button.secondary {
 }
 
 .critical-card {
-  border-color: #f2c0c0;
-  background: linear-gradient(180deg, #fff5f5 0%, #fff 100%);
+  border-color: #efb8b8;
+  background: linear-gradient(180deg, #fff4f4 0%, #fff9f9 100%);
 }
 
 .critical-head {
@@ -336,7 +405,7 @@ button.secondary {
 
 .critical-badge {
   background: #fee2e2;
-  color: #a11717;
+  color: #9f1717;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 0.8rem;
@@ -354,7 +423,7 @@ button.secondary {
   border: 1px solid #f2caca;
   border-radius: 10px;
   padding: 10px;
-  background: #fff;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -376,6 +445,16 @@ button.secondary {
   grid-template-columns: 1fr 1fr 1fr auto;
   gap: 10px;
   align-items: end;
+}
+
+.error.card {
+  border-color: #f0b5b5;
+  background: linear-gradient(180deg, #fff3f3, #fffafb);
+}
+
+.success.card {
+  border-color: #a8d9c4;
+  background: linear-gradient(180deg, #effcf5, #f8fffb);
 }
 
 @media (max-width: 980px) {

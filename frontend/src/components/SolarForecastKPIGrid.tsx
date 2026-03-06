@@ -19,7 +19,7 @@ export function SolarForecastKPIGrid({ summary, loading }: Props) {
 
   return (
     <article className="card">
-      <h2>KPIs Solar Forecast</h2>
+      <h2>KPIs Spin Forecast</h2>
       <div className="kpi-grid">
         <div className="kpi">
           <span>Geração Prevista (24h)</span>

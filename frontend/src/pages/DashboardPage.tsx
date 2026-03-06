@@ -121,7 +121,7 @@ export function DashboardPage({ onOpenSolarForecast }: Props) {
     <main className="layout">
       <header className="topbar row-between">
         <div>
-          <h1>PowerGuard AI</h1>
+          <h1>Spin Guard</h1>
           <p>Monitoramento de Confiabilidade Elétrica</p>
         </div>
         <div className="health-pill">
@@ -130,7 +130,7 @@ export function DashboardPage({ onOpenSolarForecast }: Props) {
         </div>
         {onOpenSolarForecast ? (
           <button type="button" className="secondary" onClick={onOpenSolarForecast}>
-            Abrir Solar Forecast
+            Abrir Spin Forecast
           </button>
         ) : null}
       </header>

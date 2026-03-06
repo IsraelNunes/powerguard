@@ -189,11 +189,11 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
     <main className="layout">
       <header className="topbar row-between">
         <div>
-          <h1>Solar Forecast</h1>
+          <h1>Spin Forecast</h1>
           <p>Previsão de geração fotovoltaica integrada ao risco operacional</p>
         </div>
         <button type="button" className="secondary" onClick={onBackToDashboard}>
-          Voltar ao Dashboard
+          Abrir Spin Guard
         </button>
       </header>
 

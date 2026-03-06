@@ -1,4 +1,4 @@
-# PowerGuard AI - Risk & Reliability
+# Spin Guard + Spin Forecast
 
 MVP completo para o Hackathon InovSpin (submissão até **06/03/2026 23:59**), focado em confiabilidade elétrica com IA explicável.
 
@@ -8,8 +8,9 @@ Falhas elétricas em ativos industriais costumam ser detectadas tarde, com pouca
 
 ## 2) Solução
 
-PowerGuard AI recebe medições elétricas (CSV), detecta anomalias com método robusto, calcula score de risco (0-100), explica variáveis de maior impacto, sugere causa provável e permite simulação what-if de cenários operacionais.
-Além disso, o sistema estima **impacto de negócio** (risco de indisponibilidade e custo evitável estimado) para apoiar priorização executiva.
+**Spin Guard** recebe medições elétricas (CSV), detecta anomalias com método robusto, calcula score de risco (0-100), explica variáveis de maior impacto, sugere causa provável e permite simulação what-if de cenários operacionais.
+
+**Spin Forecast** prevê geração solar (24h, 7d, 30d), cruza previsão com clima e traduz o resultado em impacto operacional e financeiro.
 
 ## 3) Stack
 
@@ -136,19 +137,31 @@ spin/
     PITCH_3MIN.md
 ```
 
-## 10) Como rodar
+## 10) Como rodar (simples e direto)
 
-1. Preparar ambiente:
+1. Criar arquivo de ambiente:
 ```bash
 cp .env.example .env
 ```
 
-2. Subir stack:
+2. Subir tudo com Docker:
 ```bash
 docker compose up -d --build
 ```
 
-3. Verificar serviços:
+3. Aplicar schema e seed (3 usinas no forecast):
+```bash
+docker compose exec -T api npm run prisma:push
+docker compose exec -T api npm run prisma:seed
+```
+
+4. Acessar:
+```txt
+Spin Guard:    http://localhost:5173
+API Health:    http://localhost:3000/api/health
+```
+
+5. Verificar status dos containers (se precisar):
 ```bash
 docker compose ps
 ```
@@ -225,10 +238,18 @@ Arquivo base: [.env.example](/home/israel/Documentos/spin/.env.example)
 - Docker Compose com serviços integrados
 - Métrica de impacto de negócio para comunicação executiva durante a demo
 
-## 14) Roteiro do pitch (3 minutos)
+## 14) Documentação para apresentação
 
-Arquivo pronto para gravação:
+Pitch consolidado (duas soluções):
+- [PITCH_SPIN_GUARD_FORECAST_3MIN.md](/home/israel/Documentos/spin/docs/PITCH_SPIN_GUARD_FORECAST_3MIN.md)
+
+FAQ por solução:
+- [FAQ_SPIN_GUARD.md](/home/israel/Documentos/spin/docs/FAQ_SPIN_GUARD.md)
+- [FAQ_SPIN_FORECAST.md](/home/israel/Documentos/spin/docs/FAQ_SPIN_FORECAST.md)
+
+Material legado (opcional):
 - [PITCH_3MIN.md](/home/israel/Documentos/spin/docs/PITCH_3MIN.md)
+- [FAQ_AVALIADOR.md](/home/israel/Documentos/spin/docs/FAQ_AVALIADOR.md)
 
 ## 15) Troubleshooting
 
