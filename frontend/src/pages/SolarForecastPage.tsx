@@ -10,7 +10,8 @@ import {
   fetchSolarPlants,
   fetchSolarTrainingJob,
   runSolarForecast,
-  startSolarTraining
+  startSolarTraining,
+  syncSolarAlerts
 } from '../features/solar/api';
 
 type HorizonOption = 24 | 168 | 720;
@@ -24,6 +25,7 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [horizon, setHorizon] = useState<HorizonOption>(24);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [equipmentId, setEquipmentId] = useState<string>('');
 
   const plantsQuery = useQuery({
     queryKey: ['solar-plants'],
@@ -37,8 +39,12 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
   }, [plantsQuery.data, selectedPlantId]);
 
   const summaryQuery = useQuery({
-    queryKey: ['solar-summary', selectedPlantId],
-    queryFn: () => fetchSolarDashboardSummary({ plantId: selectedPlantId! }),
+    queryKey: ['solar-summary', selectedPlantId, equipmentId],
+    queryFn: () =>
+      fetchSolarDashboardSummary({
+        plantId: selectedPlantId!,
+        equipmentId: equipmentId.trim() || undefined
+      }),
     enabled: Boolean(selectedPlantId),
     refetchInterval: 15000
   });
@@ -98,6 +104,19 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
     }
   });
 
+  const syncAlertsMutation = useMutation({
+    mutationFn: async () => {
+      return syncSolarAlerts({
+        plantId: selectedPlantId!,
+        equipmentId: equipmentId.trim(),
+        mode: 'RISK_BRIDGE'
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['solar-summary', selectedPlantId] });
+    }
+  });
+
   const activeModel = useMemo(
     () => modelsQuery.data?.items.find((item) => item.isActive),
     [modelsQuery.data]
@@ -144,6 +163,15 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
                   <option value={720}>30 dias</option>
                 </select>
               </label>
+              <label>
+                Equipment ID (risk bridge)
+                <input
+                  type="text"
+                  value={equipmentId}
+                  onChange={(event) => setEquipmentId(event.target.value)}
+                  placeholder="cmm... equipamento elétrico"
+                />
+              </label>
             </div>
           </div>
           <div className="row-between">
@@ -161,6 +189,14 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
             >
               {forecastRunMutation.isPending ? 'Rodando previsão...' : 'Rodar Previsão'}
             </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void syncAlertsMutation.mutateAsync()}
+              disabled={!selectedPlantId || !equipmentId.trim() || syncAlertsMutation.isPending}
+            >
+              {syncAlertsMutation.isPending ? 'Sincronizando alerta...' : 'Sincronizar Alerta Contextual'}
+            </button>
           </div>
           {trainingStatusQuery.data ? (
             <p className="muted">
@@ -168,6 +204,12 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
               {trainingStatusQuery.data.errorMessage
                 ? ` | erro: ${trainingStatusQuery.data.errorMessage}`
                 : ''}
+            </p>
+          ) : null}
+          {syncAlertsMutation.data ? (
+            <p className="muted">
+              Sync alertas: {syncAlertsMutation.data.createdAlerts} criado(s)
+              {syncAlertsMutation.data.reason ? ` | ${syncAlertsMutation.data.reason}` : ''}
             </p>
           ) : null}
           {activeModel ? (

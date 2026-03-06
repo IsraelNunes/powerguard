@@ -75,3 +75,12 @@ export async function fetchSolarDashboardSummary(params: {
   });
   return data;
 }
+
+export async function syncSolarAlerts(payload: {
+  plantId: string;
+  equipmentId: string;
+  mode?: string;
+}): Promise<{ createdAlerts: number; reason?: string }> {
+  const { data } = await axiosClient.post('/solar/alerts/sync', payload);
+  return data;
+}
