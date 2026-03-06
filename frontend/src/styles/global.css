@@ -178,6 +178,28 @@ button.secondary {
   font-size: 0.85rem;
 }
 
+.mini-trend-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mini-trend {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fdfefe;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mini-trend span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .alerts-list {
   display: flex;
   flex-direction: column;
@@ -330,6 +352,10 @@ button.secondary {
   }
 
   .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mini-trend-grid {
     grid-template-columns: 1fr;
   }
 
