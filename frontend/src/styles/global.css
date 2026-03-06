@@ -239,6 +239,35 @@ button.secondary {
   margin-top: 10px;
 }
 
+.metric-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metric-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eef4fb;
+  color: #27425f;
+  border: 1px solid #c7d7e8;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.metric-toggle.active {
+  background: #dff1ff;
+  border-color: #9bc6e9;
+}
+
+.metric-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
 .critical-card {
   border-color: #f2c0c0;
   background: linear-gradient(180deg, #fff5f5 0%, #fff 100%);
