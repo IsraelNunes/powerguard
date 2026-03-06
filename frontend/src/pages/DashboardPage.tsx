@@ -15,7 +15,11 @@ import { AlertSeverity } from '../types/api';
 
 type PeriodPreset = 'all' | '1h' | '24h' | '7d' | 'custom';
 
-export function DashboardPage() {
+interface Props {
+  onOpenSolarForecast?: () => void;
+}
+
+export function DashboardPage({ onOpenSolarForecast }: Props) {
   const queryClient = useQueryClient();
   const alertsRef = useRef<HTMLElement | null>(null);
   const simulatorRef = useRef<HTMLElement | null>(null);
@@ -123,6 +127,11 @@ export function DashboardPage() {
           <span className={`dot ${healthQuery.data?.status === 'ok' ? 'ok' : 'down'}`} />
           {healthQuery.data?.status === 'ok' ? 'API Operacional' : 'API indisponível'}
         </div>
+        {onOpenSolarForecast ? (
+          <button type="button" className="secondary" onClick={onOpenSolarForecast}>
+            Abrir Solar Forecast
+          </button>
+        ) : null}
       </header>
 
       <section className="grid">

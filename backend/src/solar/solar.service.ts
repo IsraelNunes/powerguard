@@ -14,6 +14,7 @@ import { IngestSolarGenerationDto } from './dto/ingest-solar-generation.dto';
 import { IngestSolarWeatherDto } from './dto/ingest-solar-weather.dto';
 import { GetSolarForecastDto } from './dto/get-solar-forecast.dto';
 import { ListSolarModelsDto } from './dto/list-solar-models.dto';
+import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
 import { RunSolarForecastDto } from './dto/run-solar-forecast.dto';
 import { SolarDashboardSummaryDto } from './dto/solar-dashboard-summary.dto';
 import { StartSolarTrainingDto } from './dto/start-solar-training.dto';
@@ -78,6 +79,12 @@ interface SolarForecastRow {
   p10GenerationMw: number | null;
   p50GenerationMw: number | null;
   p90GenerationMw: number | null;
+}
+
+interface SolarGenerationPointRow {
+  timestampUtc: Date;
+  generationMw: number;
+  capacityFactor: number | null;
 }
 
 @Injectable()
@@ -612,6 +619,37 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
     return {
       count: items.length,
       items
+    };
+  }
+
+  async getGeneration(query: QuerySolarGenerationDto) {
+    await this.getPlantOrFail(query.plantId);
+    const limit = query.limit ?? 500;
+    const from = query.from ? new Date(query.from) : null;
+    const to = query.to ? new Date(query.to) : null;
+
+    const rows = await this.prisma.$queryRaw<SolarGenerationPointRow[]>`
+      SELECT
+        timestamp_utc AS "timestampUtc",
+        generation_mw AS "generationMw",
+        capacity_factor AS "capacityFactor"
+      FROM solar_generation_hourly
+      WHERE plant_id = ${query.plantId}
+        AND (${from}::timestamptz IS NULL OR timestamp_utc >= ${from})
+        AND (${to}::timestamptz IS NULL OR timestamp_utc <= ${to})
+      ORDER BY timestamp_utc DESC
+      LIMIT ${limit}
+    `;
+
+    const items = [...rows].reverse();
+    return {
+      plantId: query.plantId,
+      count: items.length,
+      items: items.map((row) => ({
+        timestamp: row.timestampUtc,
+        generationMw: row.generationMw,
+        capacityFactor: row.capacityFactor
+      }))
     };
   }
 

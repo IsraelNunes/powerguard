@@ -17,6 +17,7 @@ import { IngestSolarGenerationDto } from './dto/ingest-solar-generation.dto';
 import { IngestSolarWeatherDto } from './dto/ingest-solar-weather.dto';
 import { GetSolarForecastDto } from './dto/get-solar-forecast.dto';
 import { ListSolarModelsDto } from './dto/list-solar-models.dto';
+import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
 import { RunSolarForecastDto } from './dto/run-solar-forecast.dto';
 import { SolarDashboardSummaryDto } from './dto/solar-dashboard-summary.dto';
 import { StartSolarTrainingDto } from './dto/start-solar-training.dto';
@@ -34,6 +35,11 @@ export class SolarController {
   @Get('plants')
   async listPlants() {
     return this.solarService.listPlants();
+  }
+
+  @Get('generation')
+  async getGeneration(@Query() query: QuerySolarGenerationDto) {
+    return this.solarService.getGeneration(query);
   }
 
   @Get('dashboard/summary')
