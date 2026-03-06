@@ -100,7 +100,7 @@ export interface AlertEvent {
   title: string;
   explanation: string;
   rootCauseHint: string;
-  source: 'ANALYTICS' | 'SIMULATION';
+  source: 'ANALYTICS' | 'SIMULATION' | 'SOLAR_FORECAST';
 }
 
 export interface AlertsResponse {

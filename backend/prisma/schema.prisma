@@ -24,6 +24,7 @@ enum Severity {
 enum EventSource {
   ANALYTICS
   SIMULATION
+  SOLAR_FORECAST
 }
 
 model Equipment {

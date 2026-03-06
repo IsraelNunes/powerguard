@@ -21,6 +21,7 @@ import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
 import { RunSolarForecastDto } from './dto/run-solar-forecast.dto';
 import { SolarDashboardSummaryDto } from './dto/solar-dashboard-summary.dto';
 import { StartSolarTrainingDto } from './dto/start-solar-training.dto';
+import { SyncSolarAlertsDto } from './dto/sync-solar-alerts.dto';
 import { SolarService } from './solar.service';
 
 @Controller('solar')
@@ -108,5 +109,11 @@ export class SolarController {
   @Get('forecast')
   async getForecast(@Query() query: GetSolarForecastDto) {
     return this.solarService.getForecast(query);
+  }
+
+  @Post('alerts/sync')
+  @HttpCode(HttpStatus.CREATED)
+  async syncAlerts(@Body() body: SyncSolarAlertsDto) {
+    return this.solarService.syncAlerts(body);
   }
 }

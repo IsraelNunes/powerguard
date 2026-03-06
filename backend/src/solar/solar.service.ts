@@ -6,6 +6,7 @@ import {
   OnModuleDestroy,
   OnModuleInit
 } from '@nestjs/common';
+import { EventSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseGenerationCsv } from './csv-generation.util';
 import { parseWeatherCsv } from './csv-weather.util';
@@ -18,6 +19,7 @@ import { QuerySolarGenerationDto } from './dto/query-solar-generation.dto';
 import { RunSolarForecastDto } from './dto/run-solar-forecast.dto';
 import { SolarDashboardSummaryDto } from './dto/solar-dashboard-summary.dto';
 import { StartSolarTrainingDto } from './dto/start-solar-training.dto';
+import { SyncSolarAlertsDto } from './dto/sync-solar-alerts.dto';
 
 export interface SolarPlantRow {
   id: string;
@@ -128,6 +130,13 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
       }
     }
     return value as T;
+  }
+
+  private severityFromRisk(amplifiedRisk: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+    if (amplifiedRisk >= 75) return 'CRITICAL';
+    if (amplifiedRisk >= 50) return 'HIGH';
+    if (amplifiedRisk >= 25) return 'MEDIUM';
+    return 'LOW';
   }
 
   private async getPlantOrFail(plantId: string) {
@@ -931,6 +940,81 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
         p50GenerationMw: row.p50GenerationMw,
         p90GenerationMw: row.p90GenerationMw
       }))
+    };
+  }
+
+  async syncAlerts(payload: SyncSolarAlertsDto) {
+    await this.getPlantOrFail(payload.plantId);
+
+    const equipment = await this.prisma.equipment.findUnique({
+      where: { id: payload.equipmentId }
+    });
+    if (!equipment) {
+      throw new NotFoundException(`equipmentId not found: ${payload.equipmentId}`);
+    }
+
+    const summary = await this.dashboardSummary({
+      plantId: payload.plantId,
+      equipmentId: payload.equipmentId
+    });
+    const amplifiedRisk = summary.riskBridge.amplifiedRisk;
+    const delta = summary.riskBridge.delta;
+
+    if (delta < 2) {
+      return {
+        createdAlerts: 0,
+        reason: 'Delta de risco solar abaixo do limiar mínimo para alerta contextual.'
+      };
+    }
+
+    const severity = this.severityFromRisk(amplifiedRisk);
+    const title =
+      severity === 'CRITICAL'
+        ? 'Risco ampliado por baixa disponibilidade solar'
+        : 'Atenção: impacto solar no risco operacional';
+
+    const explanation = `Risco base ${summary.riskBridge.baseRisk.toFixed(
+      2
+    )} -> risco ampliado ${summary.riskBridge.amplifiedRisk.toFixed(
+      2
+    )} (delta ${summary.riskBridge.delta.toFixed(2)}).`;
+
+    const rootCauseHint = `Previsão média 24h em ${summary.forecast24h.avgGenerationMw.toFixed(
+      2
+    )} MW com fator de capacidade ${(
+      summary.forecast24h.avgCapacityFactor * 100
+    ).toFixed(2)}%.`;
+
+    const alert = await this.prisma.alertEvent.create({
+      data: {
+        equipmentId: payload.equipmentId,
+        timestamp: new Date(),
+        severity,
+        title,
+        explanation,
+        rootCauseHint,
+        source: 'SOLAR_FORECAST' as EventSource,
+        payloadJson: {
+          plantId: payload.plantId,
+          plantName: summary.plant.name,
+          forecast24h: summary.forecast24h,
+          riskBridge: summary.riskBridge,
+          mode: payload.mode ?? 'RISK_BRIDGE'
+        }
+      }
+    });
+
+    return {
+      createdAlerts: 1,
+      items: [
+        {
+          id: alert.id,
+          severity: alert.severity,
+          title: alert.title,
+          explanation: alert.explanation,
+          riskAmplificationPoints: delta
+        }
+      ]
     };
   }
 
