@@ -69,6 +69,7 @@ export async function fetchSolarForecast(params: {
 export async function fetchSolarDashboardSummary(params: {
   plantId: string;
   equipmentId?: string;
+  pricePerMwhBrl?: number;
 }): Promise<SolarDashboardSummaryResponse> {
   const { data } = await axiosClient.get<SolarDashboardSummaryResponse>('/solar/dashboard/summary', {
     params

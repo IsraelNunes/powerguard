@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HistoryVsForecastChart } from '../components/HistoryVsForecastChart';
+import { SolarFinancialCharts } from '../components/SolarFinancialCharts';
 import { SolarForecastKPIGrid } from '../components/SolarForecastKPIGrid';
 import {
   fetchSolarDashboardSummary,
@@ -26,6 +27,7 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
   const [horizon, setHorizon] = useState<HorizonOption>(24);
   const [jobId, setJobId] = useState<string | null>(null);
   const [equipmentId, setEquipmentId] = useState<string>('');
+  const [pricePerMwhBrl, setPricePerMwhBrl] = useState<number>(650);
 
   const plantsQuery = useQuery({
     queryKey: ['solar-plants'],
@@ -39,11 +41,12 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
   }, [plantsQuery.data, selectedPlantId]);
 
   const summaryQuery = useQuery({
-    queryKey: ['solar-summary', selectedPlantId, equipmentId],
+    queryKey: ['solar-summary', selectedPlantId, equipmentId, pricePerMwhBrl],
     queryFn: () =>
       fetchSolarDashboardSummary({
         plantId: selectedPlantId!,
-        equipmentId: equipmentId.trim() || undefined
+        equipmentId: equipmentId.trim() || undefined,
+        pricePerMwhBrl
       }),
     enabled: Boolean(selectedPlantId),
     refetchInterval: 15000
@@ -166,10 +169,18 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
         'Ação preventiva: revisar despacho das próximas horas e preparar ajuste de carga crítica.';
     }
 
+    const estimatedLoss = summaryQuery.data.financial.estimatedLossBrl24h;
+    if (estimatedLoss > 25000) {
+      recommendation += ' Impacto financeiro crítico: acionar plano de mitigação com prioridade executiva.';
+    } else if (estimatedLoss > 10000) {
+      recommendation += ' Impacto financeiro relevante: antecipar redistribuição de carga e despacho.';
+    }
+
     return {
       forecastAvg: Number(forecastAvg.toFixed(2)),
       baselineAvg: Number(baselineAvg.toFixed(2)),
       deficitPercent,
+      estimatedLoss,
       recommendation
     };
   }, [forecastQuery.data, generationQuery.data, summaryQuery.data]);
@@ -222,6 +233,16 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
                   value={equipmentId}
                   onChange={(event) => setEquipmentId(event.target.value)}
                   placeholder="cmm... equipamento elétrico"
+                />
+              </label>
+              <label>
+                Tarifa (R$/MWh)
+                <input
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={pricePerMwhBrl}
+                  onChange={(event) => setPricePerMwhBrl(Number(event.target.value) || 0)}
                 />
               </label>
             </div>
@@ -330,6 +351,14 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
                   <small>Déficit vs Esperado</small>
                   <strong>{decision.deficitPercent}%</strong>
                 </div>
+                <div>
+                  <small>Perda Estimada (24h)</small>
+                  <strong>
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                      decision.estimatedLoss
+                    )}
+                  </strong>
+                </div>
               </div>
               <p className="muted">{decision.recommendation}</p>
             </>
@@ -341,6 +370,13 @@ export function SolarForecastPage({ onBackToDashboard }: Props) {
           forecast={forecastQuery.data}
           installedCapacityMw={summaryQuery.data?.plant.installedCapacityMw}
           loading={generationQuery.isLoading || forecastQuery.isLoading}
+        />
+
+        <SolarFinancialCharts
+          summary={summaryQuery.data}
+          generation={generationQuery.data}
+          forecast={forecastQuery.data}
+          loading={generationQuery.isLoading || forecastQuery.isLoading || summaryQuery.isLoading}
         />
       </section>
     </main>

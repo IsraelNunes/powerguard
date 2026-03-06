@@ -1643,6 +1643,33 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
         `
       : [];
 
+    const historyRows = await this.prisma.$queryRaw<SolarGenerationPointRow[]>`
+      SELECT
+        timestamp_utc AS "timestampUtc",
+        generation_mw AS "generationMw",
+        capacity_factor AS "capacityFactor"
+      FROM solar_generation_hourly
+      WHERE plant_id = ${query.plantId}
+      ORDER BY timestamp_utc ASC
+    `;
+
+    const hourlyBaseline = new Map<number, number>();
+    if (historyRows.length > 0) {
+      const buckets = new Map<number, { sum: number; count: number }>();
+      for (const row of historyRows) {
+        const hour = new Date(row.timestampUtc).getUTCHours();
+        const bucket = buckets.get(hour) ?? { sum: 0, count: 0 };
+        bucket.sum += row.generationMw;
+        bucket.count += 1;
+        buckets.set(hour, bucket);
+      }
+
+      for (let hour = 0; hour < 24; hour += 1) {
+        const bucket = buckets.get(hour);
+        hourlyBaseline.set(hour, bucket && bucket.count > 0 ? bucket.sum / bucket.count : 0);
+      }
+    }
+
     const avgGenerationMw =
       forecastRows.length > 0
         ? Number(
@@ -1693,6 +1720,35 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
     const confidenceLabel =
       mape == null ? 'PENDENTE_TREINO' : mape <= 8 ? 'ALTA' : mape <= 15 ? 'MEDIA' : 'BAIXA';
 
+    const expectedEnergyMwh24h =
+      forecastRows.length > 0
+        ? Number(
+            forecastRows
+              .reduce((acc, row) => {
+                const hour = new Date(row.targetTimestampUtc).getUTCHours();
+                return acc + (hourlyBaseline.get(hour) ?? row.predGenerationMw);
+              }, 0)
+              .toFixed(2)
+          )
+        : Number((plant.installedCapacityMw * 24 * 0.42).toFixed(2));
+
+    const forecastEnergyMwh24h =
+      forecastRows.length > 0
+        ? Number(forecastRows.reduce((acc, row) => acc + row.predGenerationMw, 0).toFixed(2))
+        : Number((avgGenerationMw * 24).toFixed(2));
+
+    const energyGapMwh24h = Number((forecastEnergyMwh24h - expectedEnergyMwh24h).toFixed(2));
+    const absoluteLossMwh24h = Number(Math.max(0, -energyGapMwh24h).toFixed(2));
+    const pricePerMwhBrl = Number((query.pricePerMwhBrl ?? 650).toFixed(2));
+    const revenueExpectedBrl24h = Number((expectedEnergyMwh24h * pricePerMwhBrl).toFixed(2));
+    const revenueForecastBrl24h = Number((forecastEnergyMwh24h * pricePerMwhBrl).toFixed(2));
+    const revenueGapBrl24h = Number((revenueForecastBrl24h - revenueExpectedBrl24h).toFixed(2));
+    const estimatedLossBrl24h = Number(Math.max(0, -revenueGapBrl24h).toFixed(2));
+    const potentialAvoidedLossBrl = Number((estimatedLossBrl24h * 0.35).toFixed(2));
+    const expectedCapacityFactor24h = Number(
+      (expectedEnergyMwh24h / Math.max(plant.installedCapacityMw * 24, 0.001)).toFixed(4)
+    );
+
     const solarAvailabilityFactor = 1 - avgCapacityFactor;
     const riskDelta = Number((solarAvailabilityFactor * 15).toFixed(2));
     const amplifiedRisk = Number(Math.min(100, baseRisk + riskDelta).toFixed(2));
@@ -1738,8 +1794,31 @@ export class SolarService implements OnModuleInit, OnModuleDestroy {
             forecastRows.length > 0
               ? 'Resumo com base no último forecast de 24h. Use o endpoint de forecast para detalhamento por hora.'
               : 'Resumo inicial sem modelo treinado. A próxima etapa habilita ingestão e treinamento com dados reais.'
+        },
+        {
+          severity: estimatedLossBrl24h > 20000 ? 'CRITICAL' : estimatedLossBrl24h > 5000 ? 'HIGH' : 'MEDIUM',
+          title: 'Impacto financeiro projetado (24h)',
+          explanation:
+            estimatedLossBrl24h > 0
+              ? `Gap estimado de receita em R$ ${estimatedLossBrl24h.toFixed(
+                  2
+                )} considerando tarifa de R$ ${pricePerMwhBrl.toFixed(2)}/MWh.`
+              : 'Sem perda financeira prevista no horizonte de 24h para a tarifa selecionada.'
         }
       ],
+      financial: {
+        pricePerMwhBrl,
+        expectedEnergyMwh24h,
+        forecastEnergyMwh24h,
+        energyGapMwh24h,
+        absoluteLossMwh24h,
+        expectedCapacityFactor24h,
+        revenueExpectedBrl24h,
+        revenueForecastBrl24h,
+        revenueGapBrl24h,
+        estimatedLossBrl24h,
+        potentialAvoidedLossBrl
+      },
       riskBridge: {
         baseRisk,
         amplifiedRisk,

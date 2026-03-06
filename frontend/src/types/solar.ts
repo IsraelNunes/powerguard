@@ -115,6 +115,19 @@ export interface SolarDashboardSummaryResponse {
     title: string;
     explanation: string;
   }>;
+  financial: {
+    pricePerMwhBrl: number;
+    expectedEnergyMwh24h: number;
+    forecastEnergyMwh24h: number;
+    energyGapMwh24h: number;
+    absoluteLossMwh24h: number;
+    expectedCapacityFactor24h: number;
+    revenueExpectedBrl24h: number;
+    revenueForecastBrl24h: number;
+    revenueGapBrl24h: number;
+    estimatedLossBrl24h: number;
+    potentialAvoidedLossBrl: number;
+  };
   riskBridge: {
     baseRisk: number;
     amplifiedRisk: number;

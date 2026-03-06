@@ -5,6 +5,15 @@ interface Props {
   loading: boolean;
 }
 
+function formatBrl(value?: number): string {
+  if (value == null) return '-';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
 export function SolarForecastKPIGrid({ summary, loading }: Props) {
   if (loading) return <article className="card">Carregando KPIs solares...</article>;
 
@@ -35,6 +44,22 @@ export function SolarForecastKPIGrid({ summary, loading }: Props) {
         <div className="kpi">
           <span>Cobertura Clima</span>
           <strong>{summary?.quality.weatherCoveragePercent ?? '-'}%</strong>
+        </div>
+        <div className="kpi">
+          <span>Receita Prevista (24h)</span>
+          <strong>{formatBrl(summary?.financial.revenueForecastBrl24h)}</strong>
+        </div>
+        <div className="kpi">
+          <span>Receita Esperada (24h)</span>
+          <strong>{formatBrl(summary?.financial.revenueExpectedBrl24h)}</strong>
+        </div>
+        <div className="kpi">
+          <span>Perda Estimada (24h)</span>
+          <strong>{formatBrl(summary?.financial.estimatedLossBrl24h)}</strong>
+        </div>
+        <div className="kpi">
+          <span>Perda Evitável Potencial</span>
+          <strong>{formatBrl(summary?.financial.potentialAvoidedLossBrl)}</strong>
         </div>
       </div>
     </article>
