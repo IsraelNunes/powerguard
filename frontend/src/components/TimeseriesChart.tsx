@@ -34,17 +34,43 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
     power: true,
     temperature: true
   });
+  const [liveMode, setLiveMode] = useState(false);
+  const [cursor, setCursor] = useState(0);
+
+  const points = useMemo(
+    () =>
+      (measurements?.items ?? []).map((item) => ({
+        ...item,
+        label: new Date(item.timestamp).toLocaleTimeString()
+      })),
+    [measurements]
+  );
+
+  const displayedPoints = useMemo(() => {
+    if (!liveMode || points.length <= 240) return points;
+    const end = Math.max(cursor, 240);
+    const start = Math.max(0, end - 240);
+    return points.slice(start, end);
+  }, [liveMode, points, cursor]);
+
+  const alertMap = useMemo(
+    () => new Map(alerts.map((alert) => [alert.timestamp, alert.severity] as const)),
+    [alerts]
+  );
+  const alertMarkers = useMemo(
+    () =>
+      displayedPoints
+        .filter((point) => alertMap.has(point.timestamp))
+        .map((point) => ({
+          ...point,
+          severity: alertMap.get(point.timestamp) ?? 'LOW'
+        })),
+    [displayedPoints, alertMap]
+  );
 
   if (loading) {
     return <article className="card wide">Carregando série temporal...</article>;
   }
-
-  const points = (measurements?.items ?? []).map((item) => ({
-    ...item,
-    label: new Date(item.timestamp).toLocaleTimeString()
-  }));
-  const [liveMode, setLiveMode] = useState(false);
-  const [cursor, setCursor] = useState(0);
 
   useEffect(() => {
     if (!liveMode || points.length === 0) return;
@@ -63,21 +89,6 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
       </article>
     );
   }
-
-  const displayedPoints = useMemo(() => {
-    if (!liveMode || points.length <= 240) return points;
-    const end = Math.max(cursor, 240);
-    const start = Math.max(0, end - 240);
-    return points.slice(start, end);
-  }, [liveMode, points, cursor]);
-
-  const alertMap = new Map(alerts.map((alert) => [alert.timestamp, alert.severity] as const));
-  const alertMarkers = displayedPoints
-    .filter((point) => alertMap.has(point.timestamp))
-    .map((point) => ({
-      ...point,
-      severity: alertMap.get(point.timestamp) ?? 'LOW'
-    }));
 
   const severityColor: Record<string, string> = {
     LOW: '#0b7a4f',
