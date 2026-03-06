@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -34,53 +34,15 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
     power: true,
     temperature: true
   });
-  const [liveMode, setLiveMode] = useState(false);
-  const [cursor, setCursor] = useState(0);
-
-  const points = useMemo(
-    () =>
-      (measurements?.items ?? []).map((item) => ({
-        ...item,
-        label: new Date(item.timestamp).toLocaleTimeString()
-      })),
-    [measurements]
-  );
-
-  const displayedPoints = useMemo(() => {
-    if (!liveMode || points.length <= 240) return points;
-    const end = Math.max(cursor, 240);
-    const start = Math.max(0, end - 240);
-    return points.slice(start, end);
-  }, [liveMode, points, cursor]);
-
-  const alertMap = useMemo(
-    () => new Map(alerts.map((alert) => [alert.timestamp, alert.severity] as const)),
-    [alerts]
-  );
-  const alertMarkers = useMemo(
-    () =>
-      displayedPoints
-        .filter((point) => alertMap.has(point.timestamp))
-        .map((point) => ({
-          ...point,
-          severity: alertMap.get(point.timestamp) ?? 'LOW'
-        })),
-    [displayedPoints, alertMap]
-  );
 
   if (loading) {
     return <article className="card wide">Carregando série temporal...</article>;
   }
 
-  useEffect(() => {
-    if (!liveMode || points.length === 0) return;
-
-    const id = setInterval(() => {
-      setCursor((prev) => (prev + 1) % points.length);
-    }, 1200);
-
-    return () => clearInterval(id);
-  }, [liveMode, points.length]);
+  const points = (measurements?.items ?? []).map((item) => ({
+    ...item,
+    label: new Date(item.timestamp).toLocaleTimeString()
+  }));
 
   if (points.length === 0) {
     return (
@@ -89,6 +51,14 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
       </article>
     );
   }
+
+  const alertMap = new Map(alerts.map((alert) => [alert.timestamp, alert.severity] as const));
+  const alertMarkers = points
+    .filter((point) => alertMap.has(point.timestamp))
+    .map((point) => ({
+      ...point,
+      severity: alertMap.get(point.timestamp) ?? 'LOW'
+    }));
 
   const severityColor: Record<string, string> = {
     LOW: '#0b7a4f',
@@ -102,13 +72,6 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
       <div className="row-between">
         <h2>Série Temporal</h2>
         <div className="metric-toggle-group">
-          <button
-            type="button"
-            className={`metric-toggle ${liveMode ? 'active' : ''}`}
-            onClick={() => setLiveMode((prev) => !prev)}
-          >
-            {liveMode ? 'Ao vivo: ligado' : 'Ao vivo: desligado'}
-          </button>
           {METRICS.map((metric) => (
             <button
               key={metric.key}
@@ -129,7 +92,7 @@ export function TimeseriesChart({ measurements, alerts, loading }: Props) {
       </div>
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={displayedPoints}>
+          <LineChart data={points}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" minTickGap={24} />
             <YAxis />

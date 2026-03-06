@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Query } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
-import { AnalyticsRankingDto } from './dto/analytics-ranking.dto';
 import { AnalyticsSummaryDto } from './dto/analytics-summary.dto';
 import { RunAnalyticsDto } from './dto/run-analytics.dto';
 
@@ -16,10 +15,5 @@ export class AnalyticsController {
   @Get('summary')
   async summary(@Query() query: AnalyticsSummaryDto) {
     return this.analyticsService.summary(query);
-  }
-
-  @Get('ranking')
-  async ranking(@Query() query: AnalyticsRankingDto) {
-    return this.analyticsService.ranking(query);
   }
 }

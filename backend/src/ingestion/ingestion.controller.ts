@@ -9,7 +9,6 @@ import {
   UseInterceptors
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { SimulateDataDto } from './dto/simulate-data.dto';
 import { UploadCsvDto } from './dto/upload-csv.dto';
 import { IngestionService } from './ingestion.service';
 
@@ -33,11 +32,5 @@ export class IngestionController {
     }
 
     return this.ingestionService.ingestCsv(file.buffer, body);
-  }
-
-  @Post('simulate')
-  @HttpCode(HttpStatus.CREATED)
-  async simulate(@Body() body: SimulateDataDto) {
-    return this.ingestionService.generateSimulatedDataset(body);
   }
 }
