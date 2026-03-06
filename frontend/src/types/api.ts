@@ -74,6 +74,12 @@ export interface AnalyticsSummaryResponse {
       min: number;
     };
     criticalCount: number;
+    confidence?: number;
+    recommendation?: string;
+    impact?: {
+      estimatedDowntimeRiskHours: number;
+      potentialAvoidedCostUSD: number;
+    };
     computedAt: string;
   };
   reliability: {
@@ -93,10 +99,28 @@ export interface AlertEvent {
   explanation: string;
   rootCauseHint: string;
   source: 'ANALYTICS' | 'SIMULATION';
+  payloadJson?: {
+    confidence?: number;
+    recommendation?: string;
+  };
 }
 
 export interface AlertsResponse {
   equipmentId: string;
   count: number;
   items: AlertEvent[];
+}
+
+export interface AnalyticsRankingResponse {
+  generatedAt: string;
+  count: number;
+  items: Array<{
+    equipmentId: string;
+    equipmentName: string;
+    riskCurrent: number;
+    anomalyCount: number;
+    criticalCount: number;
+    confidence: number;
+    executedAt: string;
+  }>;
 }

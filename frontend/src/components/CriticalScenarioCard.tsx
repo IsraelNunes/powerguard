@@ -3,6 +3,8 @@ interface Props {
   currentRisk?: number;
   criticalCount?: number;
   timeSinceLastCriticalHours?: number | null;
+  recommendation?: string;
+  potentialAvoidedCostUSD?: number;
   onOpenCriticalAlerts: () => void;
   onOpenSimulator: () => void;
 }
@@ -12,6 +14,8 @@ export function CriticalScenarioCard({
   currentRisk,
   criticalCount,
   timeSinceLastCriticalHours,
+  recommendation,
+  potentialAvoidedCostUSD,
   onOpenCriticalAlerts,
   onOpenSimulator
 }: Props) {
@@ -30,6 +34,10 @@ export function CriticalScenarioCard({
         O ativo apresenta condição crítica de risco operacional. Priorize investigação imediata e execute
         simulação de mitigação antes da tomada de decisão.
       </p>
+      {recommendation ? <p className="muted">Recomendação: {recommendation}</p> : null}
+      {potentialAvoidedCostUSD ? (
+        <p className="muted">Impacto estimado: até US$ {potentialAvoidedCostUSD} de custo evitável.</p>
+      ) : null}
 
       <div className="critical-metrics">
         <div>

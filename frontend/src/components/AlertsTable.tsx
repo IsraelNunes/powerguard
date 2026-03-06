@@ -45,6 +45,12 @@ export function AlertsTable({ alerts, loading, severity, onSeverityChange }: Pro
             </div>
             <p>{alert.explanation}</p>
             <small>{alert.rootCauseHint}</small>
+            {alert.payloadJson?.confidence ? (
+              <small>Confiança do alerta: {alert.payloadJson.confidence}%</small>
+            ) : null}
+            {alert.payloadJson?.recommendation ? (
+              <small>Recomendação: {alert.payloadJson.recommendation}</small>
+            ) : null}
             <small>{new Date(alert.timestamp).toLocaleString()}</small>
           </div>
         ))}
