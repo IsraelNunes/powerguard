@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EventSource {
+  ANALYTICS
+  SIMULATION
+}
+
+model Equipment {
+  id           String        @id @default(cuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  measurements Measurement[]
+  analysisRuns AnalysisRun[]
+  alerts       AlertEvent[]
+}
+
+model Measurement {
+  id          String    @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  timestamp   DateTime
+  voltage     Float
+  current     Float
+  power       Float
+  frequency   Float
+  temperature Float
+  phaseA      Float?
+  phaseB      Float?
+  phaseC      Float?
+  createdAt   DateTime  @default(now())
+
+  anomalyResult AnomalyResult?
+
+  @@index([equipmentId, timestamp])
+}
+
+model AnalysisRun {
+  id          String          @id @default(cuid())
+  equipmentId String
+  equipment   Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  fromTs      DateTime
+  toTs        DateTime
+  executedAt  DateTime        @default(now())
+  summaryJson Json
+
+  anomalies AnomalyResult[]
+
+  @@index([equipmentId, executedAt])
+}
+
+model AnomalyResult {
+  id                String      @id @default(cuid())
+  analysisRunId     String
+  analysisRun       AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  measurementId     String      @unique
+  measurement       Measurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+  isAnomaly         Boolean
+  anomalyScore      Float
+  featureImpactJson Json
+  riskScore         Float
+  riskLevel         RiskLevel
+  createdAt         DateTime    @default(now())
+
+  @@index([analysisRunId, riskLevel])
+}
+
+model AlertEvent {
+  id            String     @id @default(cuid())
+  equipmentId   String
+  equipment     Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  timestamp     DateTime
+  severity      Severity
+  title         String
+  explanation   String
+  rootCauseHint String
+  source        EventSource
+  payloadJson   Json?
+  createdAt     DateTime   @default(now())
+
+  @@index([equipmentId, timestamp])
+  @@index([severity])
+}
